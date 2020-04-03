@@ -1,0 +1,290 @@
+// Syntax of ALGOL 60
+// From the Revised Report on the Algorithmic Language Algol 60 (1963)
+// See https://www.masswerk.at/algol60/algol60-syntaxversions.htm
+// Adapted and modified 2020 by Rochus Keller <mailto:me@rochus-keller.ch>
+// Modification steps:
+// Converted with EbnfStudio
+// First fixes until the syntax parses; keywords extracted; empty and code added as terminals TBR
+// Replaced dummy statement and empty by optional constructs; removed <code>
+// reinserted unicode literals, added symbols used by marst, factored out syms
+// replace recursions by repetitions, fixed factor
+// restart from version Algol60_4.ebnf to improve unification of expressions 
+// integrated boolean, arithmetic and designator expression maintaining original precedence with minimal modifications
+// removed ambiguities; helper productions have _ suffix
+// added LL(k) prefixes where needed
+// corrections according to http://homepages.cs.ncl.ac.uk/cliff.jones/publications/OCRd/BBG63.pdf
+// fixed specification_part (semicolon in {} deviating from the revised report)
+
+program ::= { label ':' } compoundBlock_ [ ';' ]
+	// original: block | compound_statement 
+
+// merge of block and compound_statement
+compoundBlock_ ::= BEGIN  [ declaration  
+	{ \LL:2\ ';' declaration } ';' ] 
+	compound_tail 
+	
+// block ::= unlabelled_block | label ':' block 
+
+// unlabelled_block ::= block_head ';' compound_tail 
+
+// block_head ::= BEGIN declaration { ';' declaration } 
+
+// compound_statement ::= unlabelled_compound | label ':' compound_statement 
+
+// unlabelled_compound ::= BEGIN compound_tail 
+
+compound_tail ::= statement { ';' statement }  END
+	// original: statement ( END | ';' compound_tail )
+
+declaration ::= 
+	switch_declaration 
+	| \LA: 1:PROCEDURE | 2:PROCEDURE \ procedure_declaration   
+	| \LA: 1:ARRAY | 2:ARRAY | 3:ARRAY \ array_declaration 		
+	| type_declaration 	
+	// original: type_declaration | array_declaration | switch_declaration | procedure_declaration 
+
+type_declaration ::= local_or_own_type type_list 
+
+local_or_own_type ::= [ OWN ] type 
+
+type ::= REAL | INTEGER | BOOLEAN 
+
+type_list ::= simple_variable { ',' simple_variable }
+
+array_declaration ::= [ local_or_own_type ] ARRAY array_list 
+	// original: ARRAY array_list | local_or_own_type ARRAY array_list 
+
+array_list ::= array_segment { ',' array_segment }
+
+array_segment ::= identifier { ',' identifier } '[' bound_pair_list ']'
+	// original: array_identifier ( [ bound_pair_list ] | ',' array_segment )
+
+// array_identifier ::= identifier 
+
+bound_pair_list ::= bound_pair { ',' bound_pair }
+
+bound_pair ::= lower_bound ':' upper_bound 
+
+upper_bound ::= arithmetic_expression 
+
+lower_bound ::= arithmetic_expression 
+
+switch_declaration ::= SWITCH switch_identifier ':=' switch_list 
+
+switch_identifier ::= identifier 
+
+switch_list ::= designational_expression { ',' designational_expression }
+
+procedure_declaration ::= 
+	[ type ] PROCEDURE procedure_heading procedure_body 
+
+procedure_heading ::= procedure_identifier [ formal_parameter_part ] ';' [ value_part ] [ specification_part ]
+
+procedure_identifier ::= identifier 
+
+formal_parameter_part ::= '(' formal_parameter_list ')' 
+
+formal_parameter_list ::= formal_parameter { \LL:2\ parameter_delimiter formal_parameter }
+
+formal_parameter ::= identifier 
+
+value_part ::= VALUE identifier_list ';'
+
+specification_part ::= { specifier identifier_list ';' }
+	// original: [ specifier identifier_list ';' ] { specifier identifier_list }
+
+specifier ::= 
+	STRING | LABEL | SWITCH 
+	|  \LA: 1:PROCEDURE | 2:PROCEDURE | 1:ARRAY | 2:ARRAY \  // NOTE LL:2 doesn't work here because of the && relation
+	   [ type ] ( ARRAY | PROCEDURE ) 
+	| type
+	// original: STRING | type | ARRAY | type ARRAY | LABEL | SWITCH | PROCEDURE | type PROCEDURE 
+
+identifier_list ::= identifier { ',' identifier }
+
+procedure_body ::= statement // | code 
+
+statement ::= { \LL:2\ label ':' } ( unconditional_statement  | conditional_statement | for_statement )
+	// original: unconditional_statement | conditional_statement | for_statement 
+
+unconditional_statement ::= basic_statement | compoundBlock_ 
+	// original: basic_statement | compound_statement | block 
+
+basic_statement ::= unlabelled_basic_statement
+	// original: unlabelled_basic_statement | label ':' basic_statement 
+
+label ::= identifier | unsigned_integer 
+
+unlabelled_basic_statement ::= [ procedureOrAssignmentStmt_ | go_to_statement ]
+	// original: [ assignment_statement | go_to_statement | procedure_statement ]
+
+// merges procedure_statement and assignment_statement
+procedureOrAssignmentStmt_ ::=
+	identifier [ 
+		[ '[' subscript_list ']' ] ':=' expression { ':=' expression } 
+		| '(' actual_parameter_list ')'  // substitutes procedure_statement
+	]
+
+// merged into procedureOrAssignmentStmt_
+// assignment_statement ::= left_part_list arithmetic_expression | left_part_list Boolean_expression 
+
+// left_part_list ::= left_part { left_part }
+
+// left_part ::= variable ':=' | procedure_identifier ':=' 
+
+go_to_statement ::= ( GOTO | GO TO ) designational_expression 
+
+// dummy_statement ::= empty 
+
+// procedure_statement ::= procedure_identifier actual_parameter_part 
+
+// actual_parameter_part ::= [ '(' actual_parameter_list ')' ]
+
+actual_parameter_list ::= actual_parameter 
+	{ \LA: 1:',' | 1:')' & 2:identifier & 3:':'  \ parameter_delimiter actual_parameter }
+
+parameter_delimiter ::= ',' | ')' letter_string ':' '(' 
+
+actual_parameter ::= string | expression
+	// original: string | expression | array_identifier | switch_identifier | procedure_identifier 
+
+conditional_statement ::= 
+	if_clause { \LL:2\ label ':' } (
+		unconditional_statement [ ELSE statement ]
+		| for_statement
+	)
+	// original: if_statement | if_statement ELSE statement | if_clause for_statement | label ':' conditional_statement 
+
+// if_statement ::= if_clause unconditional_statement 
+
+if_clause ::= IF Boolean_expression THEN 
+
+for_statement ::= for_clause statement
+	// original: for_clause statement | label ':' for_statement 
+
+for_clause ::= FOR variable ':=' for_list DO 
+
+for_list ::= for_list_element { ',' for_list_element }
+
+for_list_element ::= 
+	arithmetic_expression [
+		STEP arithmetic_expression UNTIL arithmetic_expression 
+		|  WHILE Boolean_expression 
+	]
+
+expression ::= Boolean_expression // includes all others
+	// original: arithmetic_expression | Boolean_expression | designational_expression 
+
+arithmetic_expression ::= simple_arithmetic_expression | 
+	if_clause simple_arithmetic_expression ELSE arithmetic_expression 
+
+simple_arithmetic_expression ::= [ adding_operator ] term { adding_operator term }
+	// original: ( term | adding_operator term ) { adding_operator term }
+
+adding_operator ::= '+' | '-' 
+
+term ::= factor { multiplying_operator factor }
+
+multiplying_operator ::= '*' | '/' | '%' | '÷' | '×' | DIV | MOD
+
+factor ::= primary { power_sym_ primary }
+
+power_sym_ ::= POWER | '↑' | '^' | '**'
+
+primary ::= unsigned_number | variableOrFunction_ | '(' Boolean_expression ')' 
+	// original: unsigned_number | variable | function_designator | '(' arithmetic_expression ')' 
+
+designational_expression ::= simple_designational_expression | 
+	if_clause simple_designational_expression ELSE designational_expression 
+
+simple_designational_expression ::= primary
+	// original: label | switch_designator | '(' designational_expression ')' 
+
+// merged into variableOrFunction_
+// switch_designator ::= switch_identifier [ subscript_expression ] 
+
+Boolean_expression ::= simple_Boolean | if_clause simple_Boolean ELSE Boolean_expression 
+
+simple_Boolean ::= implication { equiv_sym_ implication }
+
+equiv_sym_ ::= EQUIV | '≡' | '=='
+
+implication ::= Boolean_term { impl_sym_ Boolean_term }
+
+impl_sym_ ::= IMPL | '⊃' | '->'
+
+Boolean_term ::= Boolean_factor { or_sym_ Boolean_factor }
+
+or_sym_ ::= OR | '∨' | '|' 
+
+Boolean_factor ::= Boolean_secondary { and_sym_ Boolean_secondary }
+
+and_sym_ ::= AND | '∧' | '&'
+
+Boolean_secondary ::= Boolean_primary | not_sym_ Boolean_primary 
+
+not_sym_ ::= NOT | '¬' | '!' 
+
+Boolean_primary ::= logical_value | relation
+	// logical_value | variable | function_designator | relation | '(' Boolean_expression ')' 
+
+relation ::= simple_arithmetic_expression [ relational_operator simple_arithmetic_expression ]
+	// original: simple_arithmetic_expression relational_operator simple_arithmetic_expression
+
+relational_operator ::= '<' | '<=' | '=' | '>=' | '>' | '<>' |  '≤' | '≥' | '≠' | '!=' | '^=' | 
+	LESS | NOTGREATER | EQUAL | NOTLESS | GREATER | NOTEQUAL 
+
+variableOrFunction_ ::= // integrates switch_designator
+	identifier [ '[' subscript_list ']' | '(' actual_parameter_list ')' ]
+
+// function_designator ::= procedure_identifier actual_parameter_part 
+
+variable ::= 
+	// original: simple_variable | subscripted_variable 
+	identifier [ '[' subscript_list ']' ]
+
+simple_variable ::= variable_identifier 
+
+variable_identifier ::= identifier 
+
+// subscripted_variable ::= array_identifier [ subscript_list ] 
+
+subscript_list ::= subscript_expression { ',' subscript_expression }
+
+subscript_expression ::= arithmetic_expression 
+
+unsigned_number ::= unsigned_integer | decimal_number
+	// original: decimal_number | exponential_part | decimal_number exponential_part 
+
+decimal_number ::= // unsigned_integer | decimal_fraction | unsigned_integer decimal_fraction 
+
+unsigned_integer ::= // digit | unsigned_integer digit 
+
+// decimal_fraction ::= '.' unsigned_integer 
+
+// exponential_part ::= [ E | ⏨ ] integer  // Marst uses # instead of ⏨
+
+// integer ::= unsigned_integer | '+' unsigned_integer | '-' unsigned_integer 
+
+string ::= // '"' open_string '"' 
+
+// open_string ::= proper_string '"' open_string '"' | open_string open_string 
+
+// proper_string ::= // any_sequence_of_symbols_not_containing_"_ | empty 
+
+letter_string ::= identifier
+	// original: letter { letter }
+
+identifier ::= // letter '>' | identifier letter | identifier digit 
+
+basic_symbol ::= // letter | digit | logical_value | delimiter 
+
+logical_value ::= TRUE | FALSE 
+
+// Helper
+comment- ::= COMMENT
+Comment ::=
+
+/// Pragmas
+%module ::= 'Algol'
+%namespace ::= 'Alg' 

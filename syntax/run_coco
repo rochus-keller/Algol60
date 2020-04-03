@@ -1,0 +1,10 @@
+../../Coco/Coco ./Algol60.atg -trace FP -o . -namespace Alg > ./coco_out.txt
+
+mv ./Parser.h ../AlgParser.h
+mv ./Parser.cpp ../AlgParser.cpp
+
+mv ./AlgSynTree.h ..
+mv ./AlgSynTree.cpp ..
+
+mv ./AlgTokenType.h ..
+mv ./AlgTokenType.cpp ..

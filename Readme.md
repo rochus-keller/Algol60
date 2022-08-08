@@ -7,7 +7,7 @@ Algol was the first language which was specified using the "Backus–Naur form" 
 The generated parser successfully reads the examples of Marst, Katwijk-algol-60, racket-algol60 and swornimgrg-algol60. The AlgLc application can be used to parse all algol files in a directory. I also implemented a syntax highlighter and a little Algol60 editor based on Qt (called AlgLjEditor, see screenshot). I added a LuaJIT terminal and bytecode viewer in case I will implement an Algol 60 to LuaJIT bytecode compiler (as I already did e.g. in https://github.com/rochus-keller/Oberon). This is work in progress.
 
 
-![Overview](http://software.rochus-keller.info/AlgLjEditor_screenshot_1.png)
+![Overview](http://software.rochus-keller.ch/AlgLjEditor_screenshot_1.png)
 
 
 ### Binary versions
@@ -16,7 +16,7 @@ Not yet available.
 
 ### Build Steps
 
-Follow these steps if you want to build the Class Browser yourself:
+Follow these steps if you want to build the application yourself:
 
 1. Make sure a Qt 5.x (libraries and headers) version compatible with your C++ compiler is installed on your system.
 1. Download the source code from https://github.com/rochus-keller/Algol60/archive/master.zip and unpack it.

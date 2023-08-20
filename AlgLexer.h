@@ -72,6 +72,7 @@ namespace Alg
         QList<Token> d_buffer;
         static QHash<QByteArray,QByteArray> d_symbols;
         Token d_lastToken;
+        bool d_quotedKeywords;
         bool d_ignoreComments;  // don't deliver comment tokens
         bool d_packComments;    // Only deliver one Tok_Comment for (*...*) instead of Tok_Latt and Tok_Ratt
     };

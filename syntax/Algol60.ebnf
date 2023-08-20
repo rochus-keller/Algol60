@@ -14,6 +14,7 @@
 // added LL(k) prefixes where needed
 // corrections according to http://homepages.cs.ncl.ac.uk/cliff.jones/publications/OCRd/BBG63.pdf
 // fixed specification_part (semicolon in {} deviating from the revised report)
+// introduced pseudokeywords to cope with existing code using eg. "equals" as an identifier
 
 program ::= { label ':' } compoundBlock_ [ ';' ]
 	// original: block | compound_statement 
@@ -185,11 +186,11 @@ adding_operator ::= '+' | '-'
 
 term ::= factor { multiplying_operator factor }
 
-multiplying_operator ::= '*' | '/' | '%' | '÷' | '×' | DIV | MOD
+multiplying_operator ::= '*' | '/' | '%' | '÷' | '×' | 'DIV' | 'MOD'
 
 factor ::= primary { power_sym_ primary }
 
-power_sym_ ::= POWER | '↑' | '^' | '**'
+power_sym_ ::= 'POWER' | '↑' | '^' | '**'
 
 primary ::= unsigned_number | variableOrFunction_ | '(' Boolean_expression ')' 
 	// original: unsigned_number | variable | function_designator | '(' arithmetic_expression ')' 
@@ -207,23 +208,23 @@ Boolean_expression ::= simple_Boolean | if_clause simple_Boolean ELSE Boolean_ex
 
 simple_Boolean ::= implication { equiv_sym_ implication }
 
-equiv_sym_ ::= EQUIV | '≡' | '=='
+equiv_sym_ ::= 'EQUIV' | '≡' | '=='
 
 implication ::= Boolean_term { impl_sym_ Boolean_term }
 
-impl_sym_ ::= IMPL | '⊃' | '->'
+impl_sym_ ::= 'IMPL' | '⊃' | '->'
 
 Boolean_term ::= Boolean_factor { or_sym_ Boolean_factor }
 
-or_sym_ ::= OR | '∨' | '|' 
+or_sym_ ::= 'OR' | '∨' | '|' 
 
 Boolean_factor ::= Boolean_secondary { and_sym_ Boolean_secondary }
 
-and_sym_ ::= AND | '∧' | '&'
+and_sym_ ::= 'AND' | '∧' | '&'
 
-Boolean_secondary ::= Boolean_primary | not_sym_ Boolean_primary 
+Boolean_secondary ::= not_sym_ Boolean_primary | Boolean_primary // order significant because of not pseudokeyword
 
-not_sym_ ::= NOT | '¬' | '!' 
+not_sym_ ::= 'NOT' | '¬' | '!' 
 
 Boolean_primary ::= logical_value | relation
 	// logical_value | variable | function_designator | relation | '(' Boolean_expression ')' 
@@ -232,7 +233,7 @@ relation ::= simple_arithmetic_expression [ relational_operator simple_arithmeti
 	// original: simple_arithmetic_expression relational_operator simple_arithmetic_expression
 
 relational_operator ::= '<' | '<=' | '=' | '>=' | '>' | '<>' |  '≤' | '≥' | '≠' | '!=' | '^=' | 
-	LESS | NOTGREATER | EQUAL | NOTLESS | GREATER | NOTEQUAL 
+	'LESS' | 'NOTGREATER' | 'EQUAL' | 'NOTLESS' | 'GREATER' | 'NOTEQUAL' 
 
 variableOrFunction_ ::= // integrates switch_designator
 	identifier [ '[' subscript_list ']' | '(' actual_parameter_list ')' ]
@@ -288,3 +289,4 @@ Comment ::=
 /// Pragmas
 %module ::= 'Algol'
 %namespace ::= 'Alg' 
+%pseudo_keywords ::= 'true' // value doesn't matter

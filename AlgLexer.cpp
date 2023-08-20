@@ -31,7 +31,7 @@ QHash<QByteArray,QByteArray> Lexer::d_symbols;
 
 Lexer::Lexer(QObject *parent) : QObject(parent),
     d_lastToken(Tok_Invalid),d_lineNr(0),d_colNr(0),d_in(0),d_err(0),d_fcache(0),
-    d_ignoreComments(true), d_packComments(true)
+    d_ignoreComments(true), d_packComments(true),d_quotedKeywords(false)
 {
 
 }
@@ -195,7 +195,8 @@ Token Lexer::nextTokenImp()
             return token( Tok_Uimpl, 1, d_line.mid(d_colNr,1).toUtf8() );
         if( ch == '"' || ch == L'‘' || ch == L'`' )
             return string();
-        if( ch.isLetter() )
+        if( ch.isLetter() || ( ch == '\'' && lookAhead().isLetter() ) )
+            // some source code embedds the keywords by ''
             return ident();
         if( ch.isDigit() || ch == '.' || ch == L'⏨' || ch == '#' ) // exponential_part starting with 'E' are not supported because ambiguity with ident
             return number();
@@ -225,6 +226,8 @@ int Lexer::skipWhiteSpace()
     const int colNr = d_colNr;
     while( d_colNr < d_line.size() && d_line[d_colNr].isSpace() )
         d_colNr++;
+    if( d_colNr == d_line.size() - 1 && d_line[d_colNr] == '\'' )
+        d_colNr++; // some Algol compilers use ' to end lines
     return d_colNr - colNr;
 }
 
@@ -249,17 +252,50 @@ QChar Lexer::lookAhead(int off) const
         return QChar();
 }
 
+static bool pseudoKeyword(int t)
+{
+    switch(t)
+    {
+    case Tok_DIV:
+    case Tok_MOD:
+    case Tok_POWER:
+    case Tok_EQUIV:
+    case Tok_IMPL:
+    case Tok_OR:
+    case Tok_AND:
+    case Tok_NOT:
+    case Tok_LESS:
+    case Tok_NOTGREATER:
+    case Tok_EQUAL:
+    case Tok_NOTLESS:
+    case Tok_GREATER:
+    case Tok_NOTEQUAL:
+        return true;
+    default:
+        return false;
+    }
+}
+
 Token Lexer::token(TokenType tt, int len, const QByteArray& val)
 {
     QByteArray v = val;
     if( tt != Tok_Comment && tt != Tok_Invalid )
         v = getSymbol(v);
     Token t( tt, d_lineNr, d_colNr + 1, len, v );
+    if( tt == Tok_Invalid )
+    {
+        if( len == 0 )
+            len = 1;
+        if( d_err != 0 )
+            d_err->error(Errors::Syntax, t.d_sourcePath, t.d_lineNr, t.d_colNr, t.d_val );
+    }else if( pseudoKeyword(tt) )
+    {
+        t.d_type = Tok_identifier;
+        t.d_code = tt;
+    }
     d_lastToken = t;
     d_colNr += len;
     t.d_sourcePath = d_sourcePath;
-    if( tt == Tok_Invalid && d_err != 0 )
-        d_err->error(Errors::Syntax, t.d_sourcePath, t.d_lineNr, t.d_colNr, t.d_val );
     return t;
 }
 
@@ -275,6 +311,7 @@ static inline bool isAllLowerCase( const QString& str )
 
 Token Lexer::ident()
 {
+    const bool quotedKeyword = lookAhead(0) == '\'';
     int off = 1;
     while( true )
     {
@@ -286,15 +323,29 @@ Token Lexer::ident()
         else
             off++;
     }
+    if( quotedKeyword && lookAhead(off++) != '\'' )
+        return token( Tok_Invalid, off, "non-terminated quoted keyword" );
+
     const QString str = d_line.mid(d_colNr, off );
     Q_ASSERT( !str.isEmpty() );
+    if( quotedKeyword )
+        d_quotedKeywords = true;
+
     int pos = 0;
-    QString keyword = str;
-    if( isAllLowerCase(keyword) )
-        keyword = keyword.toUpper();
+    QString keyword = str.toUpper(); // ignore case in keywords (unspecified)
+    if(quotedKeyword)
+    {
+        keyword = keyword.mid(1,keyword.size()-2);
+        if( keyword.isEmpty() )
+            return token( Tok_Invalid, off, "empty quoted keyword" );
+    }
     TokenType t = tokenTypeFromString( keyword.toUtf8(), &pos );
     if( t != Tok_Invalid && pos != keyword.size() )
         t = Tok_Invalid;
+    if( quotedKeyword && t == Tok_Invalid )
+        return token( Tok_Invalid, off, "invalid quoted keyword" );
+    if( d_quotedKeywords && !quotedKeyword )
+        t = Tok_Invalid; // we found an unquoted ident which looks like a keyword but in a file with quoted keywords.
     if( t == Tok_COMMENT )
         return comment();
     if( t == Tok_END )

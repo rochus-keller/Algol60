@@ -7,6 +7,7 @@
 #include <QThread>
 #include "AlgErrors.h"
 #include "AlgParser.h"
+#include "AlgLexer.h"
 
 static QStringList collectFiles( const QDir& dir )
 {
@@ -56,6 +57,21 @@ static void dumpTree( Alg::SynTree* node, int level = 0)
     foreach( Alg::SynTree* sub, node->d_children )
         dumpTree( sub, level + 1 );
 }
+
+class Lex : public Alg::Scanner
+{
+public:
+    Alg::Lexer lex;
+    Alg::Token next()
+    {
+        return lex.nextToken();
+    }
+
+    Alg::Token peek(int offset)
+    {
+        return lex.peekToken(offset);
+    }
+};
 
 int main(int argc, char *argv[])
 {
@@ -123,18 +139,17 @@ int main(int argc, char *argv[])
             files << path;
     }
 
-    Alg::Errors err;
-    err.setReportToConsole(true);
-
+    QElapsedTimer timer;
+    timer.start();
+    int ok = 0;
     foreach( const QString& path, files )
     {
         qDebug() << "processing" << path;
 
-        Alg::Lexer lex;
-        lex.setStream(path);
-        lex.setErrors(&err);
-        lex.setIgnoreComments(true);
-        lex.setPackComments(true);
+        Lex lex;
+        lex.lex.setStream(path);
+        lex.lex.setIgnoreComments(true);
+        lex.lex.setPackComments(true);
     #if 0
         Alg::Token t = lex.nextToken();
         while( t.isValid() )
@@ -143,17 +158,25 @@ int main(int argc, char *argv[])
             t = lex.nextToken();
         }
     #else
-        Alg::Parser p(&lex,&err);
-        p.Parse();
+        Alg::Parser p(&lex);
+        p.RunParser();
+        if( !p.errors.isEmpty() )
+        {
+            foreach( const Alg::Parser::Error& e, p.errors )
+                qCritical() << e.path << e.row << e.col << e.msg;
+                // qCritical() << fs.findFile(e.path)->getVirtualPath() << e.row << e.col << e.msg;
+
+        }else
+        {
+            ok++;
+            qDebug() << "ok";
+        }
         if( dump )
-            dumpTree( &p.d_root );
+            dumpTree( &p.root );
     #endif
 
     }
-    if( err.getErrCount() == 0 && err.getWrnCount() == 0 )
-        qDebug() << "successfully completed";
-    else
-        qDebug() << "completed with" << err.getErrCount() << "errors and" <<
-                    err.getWrnCount() << "warnings";
+    qDebug() << "#### finished with" << ok << "files ok of total" << files.size() << "files"
+             << "in" << timer.elapsed() << " [ms]";
     return 0;
 }

@@ -33,15 +33,21 @@ namespace Alg
         int d_type; // TokenType
         TokenType d_tokenType;
         };
+        union
+        {
+        int d_code; // TokenType
+        TokenType d_codeType;
+        };
 #else
         uint d_type : 16; // TokenType
+        uint d_code : 16;
 #endif
         quint32 d_lineNr;
         quint16 d_colNr, d_len; // counts unicode chars, not bytes!
         QByteArray d_val; // utf-8
         QString d_sourcePath;
         Token(quint16 t = Tok_Invalid, quint32 line = 0, quint16 col = 0, quint16 len = 0, const QByteArray& val = QByteArray() ):
-            d_type(t),d_lineNr(line),d_colNr(col),d_len(len),d_val(val){}
+            d_type(t),d_lineNr(line),d_colNr(col),d_len(len),d_val(val),d_code(0){}
         bool isValid() const;
         bool isEof() const;
         const char* getName() const;

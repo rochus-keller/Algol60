@@ -4,7 +4,9 @@ Algol 60 is the mother of nearly all imperative programming languages existing t
 
 Algol was the first language which was specified using the "Backus–Naur form" (BNF), yet another pioneering achievment. I took the BNF from the revised report and converted it in an LL(1) EBNF using my EbnfStudio tool (see https://github.com/rochus-keller/EbnfStudio, which I had to extend a bit to handle the unusual unicode symbols used by Algol). 
 
-The generated parser successfully reads the examples of Marst, Katwijk-algol-60, racket-algol60 and swornimgrg-algol60. The AlgLc application can be used to parse all algol files in a directory. I also implemented a syntax highlighter and a little Algol60 editor based on Qt (called AlgLjEditor, see screenshot). I added a LuaJIT terminal and bytecode viewer in case I will implement an Algol 60 to LuaJIT bytecode compiler (as I already did e.g. in https://github.com/rochus-keller/Oberon). This is work in progress.
+The generated parser successfully reads the examples of Marst, Katwijk-algol-60, racket-algol60 and swornimgrg-algol60; it also successfully parses all Marst test cases besides the ones with intentional syntax errors. The AlgLc application can be used to parse all algol files in a directory. 
+
+I also implemented a syntax highlighter and a little Algol60 editor based on Qt (called AlgLjEditor, see screenshot). I added a LuaJIT terminal and bytecode viewer in case I will implement an Algol 60 to LuaJIT bytecode compiler (as I already did e.g. in https://github.com/rochus-keller/Oberon). This is work in progress.
 
 
 ![Overview](http://software.rochus-keller.ch/AlgLjEditor_screenshot_1.png)

@@ -312,11 +312,12 @@ static inline bool isAllLowerCase( const QString& str )
 Token Lexer::ident()
 {
     const bool quotedKeyword = lookAhead(0) == '\'';
+    static const QChar underline(818);
     int off = 1;
     while( true )
     {
         const QChar c = lookAhead(off);
-        if( !c.isLetterOrNumber() &&
+        if( c != underline && !c.isLetterOrNumber() &&
                 c.unicode() != '_' // extension by RK not in the standard
                 )
             break;
@@ -326,7 +327,8 @@ Token Lexer::ident()
     if( quotedKeyword && lookAhead(off++) != '\'' )
         return token( Tok_Invalid, off, "non-terminated quoted keyword" );
 
-    const QString str = d_line.mid(d_colNr, off );
+    QString str = d_line.mid(d_colNr, off );
+    str.replace(underline,"");
     Q_ASSERT( !str.isEmpty() );
     if( quotedKeyword )
         d_quotedKeywords = true;

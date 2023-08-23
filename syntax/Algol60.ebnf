@@ -16,7 +16,8 @@
 // fixed specification_part (semicolon in {} deviating from the revised report)
 // introduced pseudokeywords to cope with existing code using eg. "equals" as an identifier
 
-program ::= { label ':' } compoundBlock_ [ ';' ]
+program ::= { \LL:2\ label ':' } [ declaration  { \LL:2\ ';' declaration } ';' ] statement { ';' [statement] } 
+         // replacing to allow for top-level without begin/end: { label ':' } compoundBlock_ [ ';' ]
 	// original: block | compound_statement 
 
 // merge of block and compound_statement

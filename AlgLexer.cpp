@@ -236,6 +236,8 @@ void Lexer::nextLine()
     d_colNr = 0;
     d_lineNr++;
     d_line = d_in->readLine();
+    static const QChar underline(818);
+    d_line.replace(underline,"");
 
     if( d_line.endsWith("\r\n") )
         d_line.chop(2);
@@ -270,6 +272,12 @@ static bool pseudoKeyword(int t)
     case Tok_NOTLESS:
     case Tok_GREATER:
     case Tok_NOTEQUAL:
+    case Tok_REAL:
+    case Tok_INTEGER:
+    case Tok_BOOLEAN:
+    case Tok_SWITCH:
+    case Tok_STRING:
+    case Tok_LABEL:
         return true;
     default:
         return false;
@@ -312,12 +320,11 @@ static inline bool isAllLowerCase( const QString& str )
 Token Lexer::ident()
 {
     const bool quotedKeyword = lookAhead(0) == '\'';
-    static const QChar underline(818);
     int off = 1;
     while( true )
     {
         const QChar c = lookAhead(off);
-        if( c != underline && !c.isLetterOrNumber() &&
+        if( !c.isLetterOrNumber() &&
                 c.unicode() != '_' // extension by RK not in the standard
                 )
             break;
@@ -327,8 +334,7 @@ Token Lexer::ident()
     if( quotedKeyword && lookAhead(off++) != '\'' )
         return token( Tok_Invalid, off, "non-terminated quoted keyword" );
 
-    QString str = d_line.mid(d_colNr, off );
-    str.replace(underline,"");
+    const QString str = d_line.mid(d_colNr, off );
     Q_ASSERT( !str.isEmpty() );
     if( quotedKeyword )
         d_quotedKeywords = true;

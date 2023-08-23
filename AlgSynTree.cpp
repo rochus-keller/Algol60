@@ -31,6 +31,7 @@ const char* SynTree::rToStr( quint16 r ) {
 		case R_compound_tail: return "compound_tail";
 		case R_conditional_statement: return "conditional_statement";
 		case R_declaration: return "declaration";
+		case R_declarations_: return "declarations_";
 		case R_designational_expression: return "designational_expression";
 		case R_equiv_sym_: return "equiv_sym_";
 		case R_expression: return "expression";
@@ -73,6 +74,7 @@ const char* SynTree::rToStr( quint16 r ) {
 		case R_specification_part: return "specification_part";
 		case R_specifier: return "specifier";
 		case R_statement: return "statement";
+		case R_statementList_: return "statementList_";
 		case R_subscript_expression: return "subscript_expression";
 		case R_subscript_list: return "subscript_list";
 		case R_switch_declaration: return "switch_declaration";

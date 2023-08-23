@@ -151,11 +151,11 @@ int main(int argc, char *argv[])
         lex.lex.setIgnoreComments(true);
         lex.lex.setPackComments(true);
     #if 0
-        Alg::Token t = lex.nextToken();
+        Alg::Token t = lex.lex.nextToken();
         while( t.isValid() )
         {
             qDebug() << t.getString() << QString::fromUtf8(t.d_val);
-            t = lex.nextToken();
+            t = lex.lex.nextToken();
         }
     #else
         Alg::Parser p(&lex);

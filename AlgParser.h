@@ -26,7 +26,9 @@ namespace Alg {
 		QList<Error> errors;
 	protected:
 		void program(SynTree*);
+		void declarations_(SynTree*);
 		void compoundBlock_(SynTree*);
+		void statementList_(SynTree*);
 		void compound_tail(SynTree*);
 		void declaration(SynTree*);
 		void type_declaration(SynTree*);

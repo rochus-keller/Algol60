@@ -14,16 +14,17 @@
 // added LL(k) prefixes where needed
 // corrections according to http://homepages.cs.ncl.ac.uk/cliff.jones/publications/OCRd/BBG63.pdf
 // fixed specification_part (semicolon in {} deviating from the revised report)
-// introduced pseudokeywords to cope with existing code using eg. "equals" as an identifier
+// introduced pseudokeywords to cope with existing code using eg. "equals" or "label" as an identifier
+// allow top-level without BEGIN/END
 
-program ::= { \LL:2\ label ':' } [ declaration  { \LL:2\ ';' declaration } ';' ] statement { ';' [statement] } 
+program ::= { \LL:2\ label ':' } [ declarations_ ] statementList_
          // replacing to allow for top-level without begin/end: { label ':' } compoundBlock_ [ ';' ]
 	// original: block | compound_statement 
 
+declarations_ ::= declaration { \LL:2\ ';' declaration } ';' 
+	
 // merge of block and compound_statement
-compoundBlock_ ::= BEGIN  [ declaration  
-	{ \LL:2\ ';' declaration } ';' ] 
-	compound_tail 
+compoundBlock_ ::= BEGIN  [ declarations_ ] compound_tail 
 	
 // block ::= unlabelled_block | label ':' block 
 
@@ -35,7 +36,10 @@ compoundBlock_ ::= BEGIN  [ declaration
 
 // unlabelled_compound ::= BEGIN compound_tail 
 
-compound_tail ::= statement { ';' statement }  END
+statementList_ ::= statement { ';' statement }
+        // made statement optional because unlabelled_basic_statement is no longer optional
+
+compound_tail ::= statementList_  END
 	// original: statement ( END | ';' compound_tail )
 
 declaration ::= 
@@ -49,7 +53,7 @@ type_declaration ::= local_or_own_type type_list
 
 local_or_own_type ::= [ OWN ] type 
 
-type ::= REAL | INTEGER | BOOLEAN 
+type ::= 'REAL' | 'INTEGER' | 'BOOLEAN' 
 
 type_list ::= simple_variable { ',' simple_variable }
 
@@ -71,7 +75,7 @@ upper_bound ::= arithmetic_expression
 
 lower_bound ::= arithmetic_expression 
 
-switch_declaration ::= SWITCH switch_identifier ':=' switch_list 
+switch_declaration ::= 'SWITCH' switch_identifier ':=' switch_list 
 
 switch_identifier ::= identifier 
 
@@ -96,7 +100,7 @@ specification_part ::= { specifier identifier_list ';' }
 	// original: [ specifier identifier_list ';' ] { specifier identifier_list }
 
 specifier ::= 
-	STRING | LABEL | SWITCH 
+	'STRING' | 'LABEL' | 'SWITCH' 
 	|  \LA: 1:PROCEDURE | 2:PROCEDURE | 1:ARRAY | 2:ARRAY \  // NOTE LL:2 doesn't work here because of the && relation
 	   [ type ] ( ARRAY | PROCEDURE ) 
 	| type
@@ -106,7 +110,7 @@ identifier_list ::= identifier { ',' identifier }
 
 procedure_body ::= statement // | code 
 
-statement ::= { \LL:2\ label ':' } ( unconditional_statement  | conditional_statement | for_statement )
+statement ::= { \LL:2\ label ':' } [ unconditional_statement  | conditional_statement | for_statement ]
 	// original: unconditional_statement | conditional_statement | for_statement 
 
 unconditional_statement ::= basic_statement | compoundBlock_ 
@@ -117,7 +121,8 @@ basic_statement ::= unlabelled_basic_statement
 
 label ::= identifier | unsigned_integer 
 
-unlabelled_basic_statement ::= [ procedureOrAssignmentStmt_ | go_to_statement ]
+unlabelled_basic_statement ::= procedureOrAssignmentStmt_ | go_to_statement
+        // moved [] to statement
 	// original: [ assignment_statement | go_to_statement | procedure_statement ]
 
 // merges procedure_statement and assignment_statement
@@ -152,7 +157,7 @@ actual_parameter ::= string | expression
 
 conditional_statement ::= 
 	if_clause { \LL:2\ label ':' } (
-		unconditional_statement [ ELSE statement ]
+		[unconditional_statement] [ ELSE statement ]
 		| for_statement
 	)
 	// original: if_statement | if_statement ELSE statement | if_clause for_statement | label ':' conditional_statement 

@@ -8,9 +8,10 @@ The generated parser successfully reads the examples of Marst, Katwijk-algol-60,
 
 I also implemented a syntax highlighter and a little Algol60 editor based on Qt (called AlgLjEditor, see screenshot). I added a LuaJIT terminal and bytecode viewer in case I will implement an Algol 60 to LuaJIT bytecode compiler (as I already did e.g. in https://github.com/rochus-keller/Oberon). This is work in progress.
 
-
 ![Overview](http://software.rochus-keller.ch/AlgLjEditor_screenshot_1.png)
 
+There is now also a hand-crafted parser which generates an AST, and a validator which evaluates the semantics and resolves symbols, as in the Simula and ActiveOberon projects.
+The goal is to implement a common IR for Algol, Oberon, Luon and Simula, which then generates LuaJIT bytecode, and which can be lowered to MIL.
 
 ### Binary versions
 

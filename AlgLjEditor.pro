@@ -37,7 +37,8 @@ SOURCES += AlgLjEditor.cpp \
     ../LjTools/LuaJitComposer.cpp \
     AlgHighlighter.cpp \
     ../LjTools/BcViewer2.cpp \
-    ../LjTools/LjDisasm.cpp
+    ../LjTools/LjDisasm.cpp \
+    ../LjTools/LuaJitHelper.cpp
 
 HEADERS  += AlgLjEditor.h \
     ../GuiTools/CodeEditor.h \
@@ -50,7 +51,8 @@ HEADERS  += AlgLjEditor.h \
     ../LjTools/LuaJitComposer.h \
     AlgHighlighter.h \
     ../LjTools/BcViewer2.h \
-    ../LjTools/LjDisasm.h
+    ../LjTools/LjDisasm.h \
+    ../LjTools/LuaJitHelper.h
 
 include( ../LuaJIT/src/LuaJit.pri ){
     LIBS += -ldl

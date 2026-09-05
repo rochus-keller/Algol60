@@ -21,7 +21,7 @@
 */
 
 #include <QObject>
-#include <Algol/AlgToken.h>
+#include <Algol60/AlgToken.h>
 #include <QHash>
 
 class QIODevice;
@@ -42,12 +42,15 @@ namespace Alg
         void setCache(FileCache* p) { d_fcache = p; }
         void setIgnoreComments( bool b ) { d_ignoreComments = b; }
         void setPackComments( bool b ) { d_packComments = b; }
+        const QString& sourcePath() const { return d_sourcePath; }
 
         Token nextToken();
         Token peekToken(quint8 lookAhead = 1);
         QList<Token> tokens( const QString& code );
         QList<Token> tokens( const QByteArray& code, const QString& path = QString() );
         static QByteArray getSymbol( const QByteArray& );
+        static const char* toId( const QByteArray& );
+        static const char* toStr( const QByteArray& );
     protected:
         Token nextTokenImp();
         int skipWhiteSpace();
@@ -71,6 +74,7 @@ namespace Alg
         QString d_line;
         QList<Token> d_buffer;
         static QHash<QByteArray,QByteArray> d_symbols;
+        static QHash<QByteArray,QByteArray> d_ids;
         Token d_lastToken;
         bool d_quotedKeywords;
         bool d_ignoreComments;  // don't deliver comment tokens

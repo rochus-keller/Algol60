@@ -21,7 +21,7 @@
 */
 
 #include <QString>
-#include <Algol/AlgTokenType.h>
+#include <Algol60/AlgTokenType.h>
 
 namespace Alg
 {
@@ -45,9 +45,10 @@ namespace Alg
         quint32 d_lineNr;
         quint16 d_colNr, d_len; // counts unicode chars, not bytes!
         QByteArray d_val; // utf-8
+        const char* d_id; // internalized version of d_val, only for Tok_identifier
         QString d_sourcePath;
         Token(quint16 t = Tok_Invalid, quint32 line = 0, quint16 col = 0, quint16 len = 0, const QByteArray& val = QByteArray() ):
-            d_type(t),d_lineNr(line),d_colNr(col),d_len(len),d_val(val),d_code(0){}
+            d_type(t),d_lineNr(line),d_colNr(col),d_len(len),d_val(val),d_code(0),d_id(0){}
         bool isValid() const;
         bool isEof() const;
         const char* getName() const;

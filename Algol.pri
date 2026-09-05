@@ -18,19 +18,25 @@
 #*/
 
 HEADERS += \
+    $$PWD/AlgAst.h \
     $$PWD/AlgErrors.h \
     $$PWD/AlgFileCache.h \
     $$PWD/AlgLexer.h \
     $$PWD/AlgParser.h \
+    $$PWD/AlgParser2.h \
+    $$PWD/AlgRowCol.h \
     $$PWD/AlgSynTree.h \
     $$PWD/AlgToken.h \
     $$PWD/AlgTokenType.h
 
 SOURCES += \
+    $$PWD/AlgAst.cpp \
     $$PWD/AlgErrors.cpp \
     $$PWD/AlgFileCache.cpp \
     $$PWD/AlgLexer.cpp \
     $$PWD/AlgParser.cpp \
+    $$PWD/AlgParser2.cpp \
+    $$PWD/AlgRowCol.cpp \
     $$PWD/AlgSynTree.cpp \
     $$PWD/AlgToken.cpp \
     $$PWD/AlgTokenType.cpp

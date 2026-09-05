@@ -37,8 +37,6 @@ CONFIG(debug, debug|release) {
 
 QMAKE_CXXFLAGS += -Wno-reorder -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable
 
-HEADERS += 
-
 
 
 

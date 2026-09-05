@@ -293,6 +293,7 @@ comment- ::= COMMENT
 Comment ::=
 
 /// Pragmas
-%module ::= 'Algol'
+%module ::= 'Algol60'
 %namespace ::= 'Alg' 
 %pseudo_keywords ::= 'true' // value doesn't matter
+%no_syntree ::= 'true'

@@ -359,7 +359,7 @@ void LjEditor::onGotoLnr(quint32 lnr)
     if( d_lock )
         return;
     d_lock = true;
-    if( Lua::JitComposer::isPacked(lnr) )
+    if( Lua::JitComposer::isRowCol() )
         d_edit->setCursorPosition(Lua::JitComposer::unpackRow(lnr)-1,Lua::JitComposer::unpackCol(lnr)-1);
     else
         d_edit->setCursorPosition(lnr-1,0);

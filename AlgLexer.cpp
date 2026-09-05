@@ -28,6 +28,7 @@
 using namespace Alg;
 
 QHash<QByteArray,QByteArray> Lexer::d_symbols;
+QHash<QByteArray,QByteArray> Lexer::d_ids;
 
 Lexer::Lexer(QObject *parent) : QObject(parent),
     d_lastToken(Tok_Invalid),d_lineNr(0),d_colNr(0),d_in(0),d_err(0),d_fcache(0),
@@ -146,6 +147,28 @@ QByteArray Lexer::getSymbol(const QByteArray& str)
     if( sym.isEmpty() )
         sym = str;
     return sym;
+}
+
+const char* Lexer::toId(const QByteArray& ident)
+{
+    // identifiers are case insensitive, but the first spelling seen is preserved
+    if( ident.isEmpty() )
+        return "";
+    QByteArray& sym = d_ids[ident.toLower()];
+    if( sym.isEmpty() )
+        sym = ident;
+    return sym.constData();
+}
+
+const char* Lexer::toStr(const QByteArray& str)
+{
+    // in contrast to toId case is significant here
+    if( str.isEmpty() )
+        return "";
+    QByteArray& sym = d_symbols[str];
+    if( sym.isEmpty() )
+        sym = str;
+    return sym.constData();
 }
 
 Token Lexer::nextTokenImp()
@@ -301,6 +324,8 @@ Token Lexer::token(TokenType tt, int len, const QByteArray& val)
         t.d_type = Tok_identifier;
         t.d_code = tt;
     }
+    if( t.d_type == Tok_identifier )
+        t.d_id = toId(t.d_val);
     d_lastToken = t;
     d_colNr += len;
     t.d_sourcePath = d_sourcePath;

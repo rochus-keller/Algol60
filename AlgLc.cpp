@@ -5,9 +5,9 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QThread>
-#include "AlgErrors.h"
-#include "AlgParser.h"
-#include "AlgLexer.h"
+#include <Algol60/AlgParser2.h>
+#include <Algol60/AlgLexer.h>
+#include <Algol60/AlgAst.h>
 
 static QStringList collectFiles( const QDir& dir )
 {
@@ -27,35 +27,16 @@ static QStringList collectFiles( const QDir& dir )
     return res;
 }
 
-static void dumpTree( Alg::SynTree* node, int level = 0)
+static void dumpAst( Alg::Declaration* module, const QString& path )
 {
-    QByteArray str;
-    if( node->d_tok.d_type == Alg::Tok_Invalid )
-        level--;
-    else if( node->d_tok.d_type < Alg::SynTree::R_First )
+    QFile out( path + ".ast" );
+    if( !out.open(QIODevice::WriteOnly) )
     {
-        if( Alg::tokenTypeIsKeyword( node->d_tok.d_type ) )
-            str = Alg::tokenTypeString(node->d_tok.d_type);
-        else if( node->d_tok.d_type > Alg::TT_Specials )
-            str = QByteArray("\"") + node->d_tok.d_val + QByteArray("\"");
-        else
-            str = QByteArray("\"") + node->d_tok.getString() + QByteArray("\"");
-
-    }else
-        str = Alg::SynTree::rToStr( node->d_tok.d_type );
-    if( !str.isEmpty() )
-    {
-        str += QByteArray("\t") /* + QFileInfo(node->d_tok.d_sourcePath).baseName().toUtf8() +
-                ":" */ + QByteArray::number(node->d_tok.d_lineNr) +
-                ":" + QByteArray::number(node->d_tok.d_colNr);
-        QByteArray ws;
-        for( int i = 0; i < level; i++ )
-            ws += "|  ";
-        str = ws + str;
-        qDebug() << str.data();
+        qCritical() << "cannot open for writing:" << out.fileName();
+        return;
     }
-    foreach( Alg::SynTree* sub, node->d_children )
-        dumpTree( sub, level + 1 );
+    QTextStream ts(&out);
+    Alg::AstModel::dump(ts, module);
 }
 
 class Lex : public Alg::Scanner
@@ -71,6 +52,11 @@ public:
     {
         return lex.peekToken(offset);
     }
+
+    QString source() const
+    {
+        return lex.sourcePath();
+    }
 };
 
 int main(int argc, char *argv[])
@@ -79,7 +65,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("https://github.com/rochus-keller/Algol");
     a.setApplicationName("AlgLc");
-    a.setApplicationVersion("2019-10-22");
+    a.setApplicationVersion("2026-09-04");
 
     QTextStream out(stdout);
     out << "AlgLc version: " << a.applicationVersion() <<
@@ -98,7 +84,7 @@ int main(int argc, char *argv[])
             out << "usage: AlgLc [options] sources" << endl;
             out << "  reads Algol60 sources (files or directories) and translates them to corresponding Lua code." << endl;
             out << "options:" << endl;
-            out << "  -dst      dump syntax trees to files" << endl;
+            out << "  -dst      dump abstract syntax trees to files" << endl;
             out << "  -o=path   path where to save generated files (default like first source)" << endl;
             out << "  -ns=name  namespace for the generated files (default empty)" << endl;
             out << "  -mod=name directory of the generated files (default empty)" << endl;
@@ -158,21 +144,21 @@ int main(int argc, char *argv[])
             t = lex.lex.nextToken();
         }
     #else
-        Alg::Parser p(&lex);
-        p.RunParser();
+        Alg::AstModel mdl;
+        Alg::Parser2 p(&lex, &mdl);
+        Alg::Declaration* module = p.RunParser();
         if( !p.errors.isEmpty() )
         {
-            foreach( const Alg::Parser::Error& e, p.errors )
-                qCritical() << e.path << e.row << e.col << e.msg;
-                // qCritical() << fs.findFile(e.path)->getVirtualPath() << e.row << e.col << e.msg;
+            foreach( const Alg::Parser2::Error& e, p.errors )
+                qCritical() << e.path << e.pos.d_row << e.pos.d_col << e.msg;
 
         }else
         {
             ok++;
             qDebug() << "ok";
         }
-        if( dump )
-            dumpTree( &p.root );
+        if( dump && module )
+            dumpAst( module, path );
     #endif
 
     }

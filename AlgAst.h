@@ -45,8 +45,9 @@ namespace Alg
             // standard functions of the Revised Report 3.2.4
             ABS, SIGN, SQRT, SIN, COS, ARCTAN, LN, EXP, ENTIER,
             // environmental procedures of the Modified Report 5
-            ININTEGER, OUTINTEGER, INREAL, OUTREAL, INSYMBOL, OUTSYMBOL,
-            OUTSTRING, LENGTH, STOP, FAULT, MAXREAL, MINREAL, MAXINT, EPSILON,
+            IABS, ININTEGER, OUTINTEGER, INREAL, OUTREAL, INCHAR, OUTCHAR,
+            INSYMBOL, OUTSYMBOL, OUTSTRING, OUTTERMINATOR, LENGTH, STOP, FAULT,
+            MAXREAL, MINREAL, MAXINT, EPSILON,
             Max
         };
         static const char* name[];
@@ -70,9 +71,11 @@ namespace Alg
         uint mode : 2; // ParamMode
         uint isOwn : 1; // own variable or array
         uint isSpec : 1; // formal parameter with explicit specification
+        uint isParam : 1; // formal parameter of the enclosing procedure
+        uint assigned : 1; // variable or parameter which is target of an assignment
         uint escapes : 1; // local used by a thunk or an inner procedure, thus frame lifting required
         uint nonlocal : 1; // label used as target of a goto from an inner block instance
-        uint id : 16;  // Builtin::Kind
+        uint id : 16;  // Builtin::Kind, label index
 
         // Type
         uint ownsexpr : 1;
@@ -145,6 +148,9 @@ namespace Alg
 
             // Module
             QString* path; // source path
+
+            // Parameter with a Procedure type
+            Declaration* actual; // the unique actual procedure passed to this formal, not owned
         };
 
         Declaration(Kind k = Invalid);

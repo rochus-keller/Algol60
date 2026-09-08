@@ -27,7 +27,8 @@ HEADERS += \
     $$PWD/AlgRowCol.h \
     $$PWD/AlgSynTree.h \
     $$PWD/AlgToken.h \
-    $$PWD/AlgTokenType.h
+    $$PWD/AlgTokenType.h \
+    $$PWD/AlgValidator.h
 
 SOURCES += \
     $$PWD/AlgAst.cpp \
@@ -39,4 +40,5 @@ SOURCES += \
     $$PWD/AlgRowCol.cpp \
     $$PWD/AlgSynTree.cpp \
     $$PWD/AlgToken.cpp \
-    $$PWD/AlgTokenType.cpp
+    $$PWD/AlgTokenType.cpp \
+    $$PWD/AlgValidator.cpp

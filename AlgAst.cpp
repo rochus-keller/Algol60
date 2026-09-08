@@ -17,7 +17,7 @@
 * http://www.gnu.org/copyleft/gpl.html.
 */
 
-// adopted from Simula project
+// adopted from Simula and ActiveOberon projects
 
 #include <Algol60/AlgAst.h>
 #include <Algol60/AlgLexer.h>
@@ -27,8 +27,9 @@ using namespace Alg;
 
 const char* Builtin::name[] = {
     "ABS", "SIGN", "SQRT", "SIN", "COS", "ARCTAN", "LN", "EXP", "ENTIER",
-    "ININTEGER", "OUTINTEGER", "INREAL", "OUTREAL", "INSYMBOL", "OUTSYMBOL",
-    "OUTSTRING", "LENGTH", "STOP", "FAULT", "MAXREAL", "MINREAL", "MAXINT", "EPSILON"
+    "IABS", "ININTEGER", "OUTINTEGER", "INREAL", "OUTREAL", "INCHAR", "OUTCHAR",
+    "INSYMBOL", "OUTSYMBOL", "OUTSTRING", "OUTTERMINATOR", "LENGTH", "STOP", "FAULT",
+    "MAXREAL", "MINREAL", "MAXINT", "EPSILON"
 };
 
 const char* Type::name[] = {
@@ -59,7 +60,7 @@ Node::Node(Meta m) :
     kind(0),
 #endif
     meta(m), ownstype(0), owned(0), validated(0), hasErrors(0),
-    mode(0), isOwn(0), isSpec(0), escapes(0), nonlocal(0), id(0), ownsexpr(0), type(0)
+    mode(0), isOwn(0), isSpec(0), isParam(0), assigned(0), escapes(0), nonlocal(0), id(0), ownsexpr(0), type(0)
 {
 }
 

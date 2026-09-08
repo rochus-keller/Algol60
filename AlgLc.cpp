@@ -8,6 +8,8 @@
 #include <Algol60/AlgParser2.h>
 #include <Algol60/AlgLexer.h>
 #include <Algol60/AlgAst.h>
+#include <Algol60/AlgValidator.h>
+
 
 static QStringList collectFiles( const QDir& dir )
 {
@@ -128,6 +130,7 @@ int main(int argc, char *argv[])
     QElapsedTimer timer;
     timer.start();
     int ok = 0;
+    int valid = 0;
     foreach( const QString& path, files )
     {
         qDebug() << "processing" << path;
@@ -155,14 +158,23 @@ int main(int argc, char *argv[])
         }else
         {
             ok++;
-            qDebug() << "ok";
+            Alg::Validator v(&mdl);
+            if( !v.validate(module) )
+            {
+                foreach( const Alg::Validator::Error& e, v.errors )
+                    qCritical() << "validator error:" << e.pos.d_row << e.pos.d_col << e.msg;
+            }else
+            {
+                valid++;
+            }
         }
         if( dump && module )
             dumpAst( module, path );
     #endif
 
     }
-    qDebug() << "#### finished with" << ok << "files ok of total" << files.size() << "files"
+    qDebug() << "#### finished with" << ok << "parsed," << valid << "validated"
+             << " of total" << files.size() << "files"
              << "in" << timer.elapsed() << " [ms]";
     return 0;
 }

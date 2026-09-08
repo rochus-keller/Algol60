@@ -1,3 +1,24 @@
+/*
+* Copyright 2026 Rochus Keller <mailto:me@rochus-keller.ch>
+*
+* This file is part of the Algol60 parser library.
+*
+* The following is the license that applies to this copy of the
+* library. For a license to use the library under conditions
+* other than those described here, please email to me@rochus-keller.ch.
+*
+* GNU General Public License Usage
+* This file may be used under the terms of the GNU General Public
+* License (GPL) versions 2.0 or 3.0 as published by the Free Software
+* Foundation and appearing in the file LICENSE.GPL included in
+* the packaging of this file. Please review the following information
+* to ensure GNU General Public Licensing requirements will be met:
+* http://www.fsf.org/licensing/licenses/info/GPLv2.html and
+* http://www.gnu.org/copyleft/gpl.html.
+*/
+
+// generated with EbnfStudio and then AST generation manually added
+
 #include <Algol60/AlgParser2.h>
 #include <Algol60/AlgLexer.h>
 #include <QFileInfo>
@@ -1139,6 +1160,7 @@ void Parser2::formal_parameter(Declaration* procDecl) {
     Declaration* param = mdl->addDecl(cur.d_id, cur.d_val, Declaration::Parameter);
     param->pos = toRowCol(cur);
     param->outer = procDecl;
+    param->isParam = true;
     // the specification part is optional in Algol 60, so the type and the mode
     // of the parameter are not necessarily known here
 }

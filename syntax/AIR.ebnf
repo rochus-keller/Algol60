@@ -1,0 +1,144 @@
+// Copyright (c) 2026 by Rochus Keller <mailto:me@rochus-keller.ch>
+// 
+// GNU General Public License Usage
+// This file may be used under the terms of the GNU General Public
+// License (GPL) versions 2.0 or 3.0 as published by the Free Software
+// Foundation and appearing in the file LICENSE.GPL included in
+// the packaging of this file. Please review the following information
+// to ensure GNU General Public Licensing requirements will be met:
+// http://www.fsf.org/licensing/licenses/info/GPLv2.html and
+// http://www.gnu.org/copyleft/gpl.html.
+//
+// The Algol Intermediate Representation (AIR) was derived from the Micron Intermediate Language (MIL)
+// It is intended for Algol60 and derived languages like Oberon+, Luon, ActiveOberon and Simula67,
+// and for lowering to LuaJIT, ECMA-335 CIL and MIL
+
+module     ::= 'MODULE' [Line] ident [';']
+             [ 'SOURCE' string [';'] ]
+             { ImportList | DeclarationSequence }
+             'END' [Line] ident ['.']
+             
+ImportList ::= 'IMPORT' import { [','] import } [';']
+import     ::= [Line] ident
+
+DeclarationSequence ::= { 'CONST' { ConstDeclaration [';'] }
+            | 'TYPE' { TypeDeclaration [';'] }
+            | 'VAR' { VariableDeclaration [';'] }
+            | ProcedureDeclaration [';'] }
+            
+ConstDeclaration    ::= identdef '=' ConstExpression
+
+VariableDeclaration ::= IdentList ':' NamedType
+
+qualident  ::= [\LL:2\ ident '!'] ident    // module : item
+trident    ::= qualident '.' ident
+identdef   ::= ident ['*']
+IdentList  ::= identdef { [','] identdef }
+
+TypeDeclaration ::= identdef '=' ( NamedType | ArrayType | StructType | RecordType
+                    | PointerType | ProcedureType | ForeignType )
+NamedType       ::= qualident
+ArrayType       ::= 'ARRAY' [ length ] 'OF' NamedType
+length          ::= unsigned
+StructType      ::= 'STRUCT' { FieldList [';'] } 'END'
+RecordType      ::= 'RECORD' [ '(' NamedType ')' ] { FieldList [';'] } 'END'
+FieldList       ::= IdentList ':' NamedType
+PointerType     ::= 'POINTER' 'TO' ( NamedType | 'ANYREC' )
+ProcedureType   ::= 'PROCEDURE' ['^'] [FormalParameters] // '^' is BoundProcedureType
+ForeignType     ::= 'CSTRUCT' { FieldList [';'] } 'END'
+                    | 'CUNION' { FieldList [';'] } 'END'
+                    | 'CARRAY' [ length ] 'OF' NamedType
+                    | 'CPOINTER' 'TO' ( NamedType | 'ANY' )
+
+ProcedureDeclaration ::= 'PROCEDURE'  [Line]  // integrated ProcedureHeading
+                        (
+                           \LA: 1:ident & 2:'.'\ Binding identdef [ FormalParameters ] [ ';' ] ProcedureBody
+                           | identdef  
+                               [ FormalParameters ] 
+                               (
+                                   \LA: 1:('EXTERN'|'FOREIGN') | (1:';'&2:('EXTERN'|'FOREIGN'))\ [ ';' ] 
+                                       ('EXTERN'|'FOREIGN') [string]
+                                   |  ['INIT'] [ ';' ] ProcedureBody  
+                               ) 
+                        )
+                        
+Binding              ::= ident '.'
+
+ProcedureBody        ::= ['VAR' { LocalDeclaration [';'] }]
+                       'BEGIN' StatementSequence 'END' ident
+                       
+LocalDeclaration     ::= IdentList ':' NamedType 
+
+FormalParameters     ::= '(' [ FPSection { ';' FPSection } ] ')' [ ':' ReturnType ]
+ReturnType           ::= NamedType
+FPSection            ::= ['VAR'] [Line] ident { [','] [Line] ident } ':' NamedType 
+
+ConstExpression ::= qualident | number | string | hexstring
+
+Expression ::= [Line] ExpInstr { ExpInstr | Line }
+ExpInstr ::= 'abs' | 'add' | 'and'
+    | ('call' | 'calli' | 'pcall' | 'pcalli') qualident
+    | ('callinst' | 'callvirt') trident
+    | 'callmi' qualident
+    | 'castobj' qualident
+    | 'ceq' | 'cgt' | 'cgt_un' | 'clt' | 'clt_un'
+    | 'conv_i1' | 'conv_i2' | 'conv_i4' | 'conv_i8' | 'conv_r4' | 'conv_r8'
+    | 'conv_u1' | 'conv_u2' | 'conv_u4' | 'conv_u8'
+    | 'curtask' | 'div' | 'div_un' | 'dup'
+    | 'isinst' qualident
+    | 'ldarg' (unsigned|ident) | 'ldloc' (unsigned|ident) | 'ldvar' qualident
+    | ('ldc_i4'|'ldc_i8') integer | ('ldc_r4'|'ldc_r8') number
+    | 'ldelem' qualident | 'ldfld' trident | 'len'
+    | 'ldmeth' trident | 'ldvirt' trident | 'ldproc' qualident
+    | 'ldnull' | 'ldstr' (string|hexstring)
+    | 'mul' | 'neg' | 'newarr' qualident | 'newarr_um' qualident
+    | 'newobj' qualident | 'newobj_um' qualident | 'newtask'
+    | 'not' | 'or' | 'rem' | 'rem_un'
+    | 'refarg' (unsigned|ident) | 'refloc' (unsigned|ident) | 'refvar' qualident
+    | 'reffld' trident | 'refelem' qualident
+    | 'shl' | 'shr' | 'shr_un' | 'sub' | 'taskdone' | 'xor'
+    | CondOp | ForeignExpInstr
+CondOp ::= 'IIF' Expression 'THEN' Expression 'ELSE' Expression 'END'
+ForeignExpInstr ::= 'ldind' qualident | 'caddr' | 'sizeof' qualident
+
+StatementSequence ::= { Statement | ExpInstr | Line }
+Statement ::= SimpleStatement | CompoundStatement
+SimpleStatement ::= 'copy' qualident | 'exit' | 'free'
+    | 'goto' ident | 'label' ident | 'pop' | 'raise' | 'ret'
+    | 'starg' (unsigned|ident) | 'stelem' qualident | 'stfld' trident
+    | 'stloc' (unsigned|ident) | 'stvar' qualident | 'transfer'
+    | ForeignStatement
+ForeignStatement ::= 'stind' qualident
+CompoundStatement ::= IfThenElse | Loop | RepeatUntil | Switch | WhileDo
+
+IfThenElse  ::= 'IF' Expression 'THEN' StatementSequence
+              [ 'ELSE' StatementSequence ] 'END'
+Loop        ::= 'LOOP' StatementSequence 'END'
+
+RepeatUntil ::= 'REPEAT' StatementSequence 'UNTIL' Expression 'END'
+
+Switch      ::= 'SWITCH' Expression
+              { 'CASE' CaseLabel { [','] CaseLabel } 'THEN' StatementSequence }
+              [ 'ELSE' StatementSequence ] 'END'
+CaseLabel   ::= integer [ '..' integer ]
+
+WhileDo     ::= 'WHILE' Expression 'DO' StatementSequence 'END'
+
+Line ::= 'LINE' unsigned [ ':' unsigned ]
+
+integer   ::= ['+' | '-'] unsigned
+number    ::= ['+' | '-'] (float | unsigned)
+
+/// Lexer productions
+unsigned  ::= // digit {digit} ['O'|'Z'] | digit {hexDigit} 'H'
+float     ::= //digit {digit} '.' {digit} [Exponent]
+              //Exponent  ::= 'E' ['+' | '-'] digit {digit}
+string    ::= // ''' {character} ''' | '"' {character} '"'
+hexstring ::= // '#' {hexDigit} '#'
+ident     ::= // ( letter | '_' ) { letter | digit | '_' | '$' }
+
+/// Pragmas:
+%module ::= 'Algol60'
+%namespace ::= 'Air'
+%no_syntree ::= 'true'
+%pseudo_keywords ::= 'true' 

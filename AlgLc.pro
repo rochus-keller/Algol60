@@ -27,7 +27,11 @@ TEMPLATE = app
 
 INCLUDEPATH +=  ..
 
-SOURCES += AlgLc.cpp
+SOURCES += AlgLc.cpp \
+    AirEmitter.cpp \
+    AirOps.cpp \
+    AirRenderer.cpp \
+    AlgAirGen.cpp
 
 include( Algol.pri )
 
@@ -36,6 +40,12 @@ CONFIG(debug, debug|release) {
 }
 
 QMAKE_CXXFLAGS += -Wno-reorder -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable
+
+HEADERS += \
+    AirEmitter.h \
+    AirOps.h \
+    AirRenderer.h \
+    AlgAirGen.h
 
 
 

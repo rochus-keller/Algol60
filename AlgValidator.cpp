@@ -854,8 +854,11 @@ void Validator::Args(Declaration* proc, Expression* args, const RowCol& pos)
             Expr(a);
         }else if( Expr(a) ) {
             Type* at = a->getType();
-            if( formal == 0 )
+            if( formal == 0 ) {
                 markEscape(a); // the mode of the formal is unknown, thus assume by name
+                // the formal may as well be a label
+                markLabel(a, true);
+            }
             else if( formal->kind == Declaration::Array || ( ft && ft->kind == Type::Array ) ) {
                 if( a->kind != Expression::DeclRef || a->d == 0 ||
                         a->d->getType() == 0 || a->d->getType()->kind != Type::Array )
@@ -1198,9 +1201,8 @@ Type* Validator::resultType(int op, Type* lhs, Type* rhs, Expression* e)
     case Expression::Power:
         if( !lhs->isArithmetic() || !rhs->isArithmetic() )
             return 0;
-        // integer only if the base is an integer and the exponent a positive integer literal
-        if( lhs->kind == Type::Integer && e && e->rhs &&
-                e->rhs->kind == Expression::UnsignedConst && e->rhs->u > 0 )
+        // integer if base and exponent are integers; a negative exponent is a runtime fault
+        if( lhs->kind == Type::Integer && rhs->kind == Type::Integer )
             return mdl->getType(Type::Integer);
         return mdl->getType(Type::Real);
 

@@ -11,7 +11,19 @@ I also implemented a syntax highlighter and a little Algol60 editor based on Qt 
 ![Overview](http://software.rochus-keller.ch/AlgLjEditor_screenshot_1.png)
 
 There is now also a hand-crafted parser which generates an AST, and a validator which evaluates the semantics and resolves symbols, as in the Simula and ActiveOberon projects.
-The goal is to implement a common IR for Algol, Oberon, Luon and Simula, which then generates LuaJIT bytecode, and which can be lowered to MIL.
+
+### Status on Sept. 16, 2026
+
+Motivated by the success of the Micron Intermediate language (MIL) which helped to make the various backends much simpler compared to my experience with Oberon+ and Luon,
+I decided to create a higher-level intermediate representation for languages in the Algol lineage (like my Oberon and Luon) which don't support taking the address
+of variables, fields, elements and parameters, and thus are easier to integrate with a LuaJIT backend. My various attempts with adding a LuaJIT backend to MIL
+were not successful (eventually because of the low performance due to my own stack mangagement and the required type conversions when using LuaJIT as a "C interpreter").
+This was enough motivation to create an alternative representation which better suits the lowering level on which LuaJIT bytecode operates, instead of directly
+lowering to MIL (the latter is still planned). My Algol60 adventure started in 2020 (originally to better understand the Simula syntax and because of the anniversary)
+and I used the implementation for various experiments since, and now as the home and first implementation of the _Algol Intermediate Representation_ (AIR).
+There is a first version of the specification in the docs directory, and the infrastructure to generate it (using an equivalent design I implemented for 
+the Micron project). AIR is designed for reusability with (hopefully) all the features required for Oberon+, Luon, ActiveOberon and Simula 67.
+
 
 ### Binary versions
 

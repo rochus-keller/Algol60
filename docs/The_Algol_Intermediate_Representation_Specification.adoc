@@ -1,0 +1,1972 @@
+// LeanDoc 2026-09-04
+
+// This file may be used under the terms specified in the License section below
+
+= Algol Intermediate Representation
+:toc:
+:numbered:
+
+== Front Matter
+
+=== Title
+
+The Algol Intermediate Representation Specification
+
+=== Version
+
+2026-09-16, work in progress
+
+=== Author
+
+me@rochus-keller.ch
+
+=== Additional Credits
+
+The structure of this specification, its textual notation and many
+instruction names follow the Micron Intermediate Language (<<MIL>>) specification,
+which in turn derived parts from the ECMA-335 standard (3rd edition 2005).
+
+=== License
+
+Copyright (c) 2026 Rochus Keller
+
+Permission is granted to copy, distribute and/or modify this document under the terms of the
+GNU Free Documentation License, Version 1.3 or any later version published by the Free Software Foundation;
+with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+A copy of the license is included in the section entitled “GNU Free Documentation License”.
+The license is also available at: https://www.gnu.org/licenses/fdl-1.3.html
+
+This work is provided without warranty, to the extent permitted by applicable law.
+
+== Language Specification
+
+[[Overview]]
+=== Overview
+
+The Algol Intermediate Representation (AIR) is a typed,
+target independent intermediate language for compilers of block structured,
+statically typed languages of the Algol family, in particular Algol 60, Simula 67,
+Oberon+, ActiveOberon and Luon. 
+AIR is the sibling of the Micron Intermediate Language (MIL): 
+it uses the same textual notation, the same module, 
+type and procedure skeleton and the same conceptual evaluation stack, 
+but it is defined at a higher level than MIL and has a different memory model.
+
+AIR helps to isolate the semantics of the source language from the backend implementation.
+A backend author thus needs no knowledge of the source language;
+all source level constructs whose implementation
+does not legitimately depend on the target have been lowered away by the
+frontend before AIR is generated. 
+The design of AIR is determined by the rule, 
+that a construct is part of AIR if and only if its best implementation
+differs between backends. Everything else is lowered by the frontend.
+
+Constructs which pass this rule and are therefore present in AIR include:
+structured values with explicit copy semantics, 
+records with single inheritance and dynamic type information, 
+bound procedure values, 
+open arrays with a runtime length, 
+symbolic designators and reference parameters, 
+managed (garbage collected) allocation, 
+structured control flow including multi-way branches, 
+protected calls, 
+and tasks (coroutines). 
+Constructs which fail the rule and are lowered by the frontend include:
+prefix classes and `inner`, 
+nested procedures and up-level addressing, 
+name parameters, 
+`with`/`inspect`/`qua`, 
+string and text operations, 
+array bounds and dimension mapping, 
+generics, and the predeclared procedures of the source languages.
+
+AIR differs from MIL in the following essential points:
+
+* AIR never exposes a machine address. 
+  Variables, parameters, fields and array elements are identified symbolically. 
+  A reference to a designator exists only as a second class value 
+  which can be passed to a reference parameter but neither stored nor computed with.
+* Structured values (records, arrays) are never copied implicitly by loads and stores. 
+  All copies are explicit `copy` instructions.
+* Memory is managed by a garbage collector by default. 
+  Manual allocation exists only for types which contain no managed references.
+* There are no unions, bit fields, pointer arithmetic, `sizeof`,
+  address-taking instructions or indirect loads and stores in the core language. 
+* Protected calls and tasks are part of the instruction set.
+
+AIR has three intended consumers: 
+an interpreter which serves as the reference implementation, 
+a lowering to MIL for the C99, native and interpreter backends of the Micron toolchain, 
+and a direct LuaJIT and ECMA-335 bytecode generator. 
+The specification is written so that the MIL and LuaJIT mappings are both straightforward.
+
+[[Representations]]
+=== Representations
+
+AIR has a textual representation, defined by this document, 
+and an in-memory representation (the AIR AST) 
+which is the interface between compiler phases. 
+A serialized binary representation of the AST is planned but not yet specified.
+
+The textual representation is the reference for the semantics. 
+The AIR AST is defined by the implementation; 
+a renderer maps the AST to the textual representation 
+and a parser maps the textual representation to the AST, 
+such that the composition of both is the identity up to formatting. 
+Frontends, the validator, the interpreter and the backends interact via the AST; 
+the textual representation is used for inspection, testing, 
+and as the exchange format until the binary representation exists.
+
+==== Textual Representation
+
+The textual representation is a string of characters encoded using the 
+UTF-8 variable-width encoding (as defined in ISO/IEC 10646) with the lexical
+structure defined in the following sections. 
+It is case sensitive with the exception of the predeclared type names and the structural keywords,
+which are accepted in all upper or all lower case letters.
+
+==== Syntax
+
+An extended Backus-Naur Formalism (EBNF) is used to describe the
+textual syntax of AIR.
+
+* Alternatives are separated by *|*.
+* Brackets *[* and *]* denote optionality of the enclosed expression.
+* Braces *{* and *}* denote its repetition (possibly 0 times).
+
+Syntactic entities (non-terminal symbols) are denoted by English words
+expressing their intuitive meaning.
+Symbols of the language vocabulary (terminal symbols) are denoted by
+strings enclosed in single quotes or by upper case words.
+
+==== Identifiers
+
+Identifiers are sequences of letters, digits, underscores and dollar signs. 
+The first character cannot be a digit.
+
+.Syntax:
+....
+ident  = ( letter | '_' ) { letter | digit | '_' | '$' }
+letter = 'A' ... 'Z' | 'a' ... 'z'
+digit  = '0' ... '9'
+....
+
+Frontends are expected to use the dollar sign for generated identifiers
+(frames, thunks, temporaries, descriptors) 
+so that they cannot collide with identifiers taken from the source program.
+Generated identifiers are as significant for debugging as source identifiers, see <<Debugging>>.
+
+==== Numbers
+
+Number literals are optionally signed integer or real constants.
+
+If the literal is specified with the suffix 'H', the representation is hexadecimal, 
+if it is specified with suffix 'O', the representation is octal, 
+or if it is specified with suffix 'Z', the representation is binary, 
+otherwise the representation is decimal.
+
+A real number always contains a decimal point and at least one digit before the point. 
+Optionally it may also contain a decimal scale factor. 
+The letter 'E' means _times ten to the power of_.
+
+.Syntax:
+....
+integer  = ['+' | '-'] unsigned
+unsigned = digit {digit} ['O'|'Z'] | digit {hexDigit} 'H'
+float    = digit {digit} '.' {digit} [Exponent]
+number   = ['+' | '-'] (float | unsigned)
+Exponent = 'E' ['+' | '-'] digit {digit}
+hexDigit = digit | 'A' ... 'F'
+....
+
+Even though only the upper-case version is shown here, 
+also the lower-case versions of the suffices and scale factor letters are supported.
+
+==== Strings
+
+Strings are sequences of printable characters enclosed in single (') or double (") quote marks.
+The opening quote must be the same as the closing quote and must not occur within the string. 
+A string must not extend over the end of a line. 
+The number of characters in a string is called its length. 
+A string of length 1 can be used wherever a character constant is allowed and vice versa.
+
+Hex strings are sequences of bytes encoded in hexadecimal format and enclosed in hash signs. 
+The number of hex digits in the string must be even, two hex digits per byte. 
+Line breaks and other white space between the hash signs is ignored.
+
+.Syntax:
+....
+string    = ''' {character} ''' | '"' {character} '"'
+hexstring = '#' {hexDigit} '#'
+....
+
+String literals denote character arrays of exactly their length; 
+there is no implicit terminating zero. 
+Source languages with zero terminated strings (Oberon+) add the terminator in the frontend.
+
+==== Reserved Words
+
+The AIR textual representation has no reserved words. 
+Some identifiers have dedicated meanings in a specific context of the source code, 
+which usually doesn't interfere with field, parameter and variable naming.
+
+==== Comments
+
+Comments are arbitrary character sequences opened by the bracket `(*` and closed by `*)`.
+Comments may be nested. Text starting with `//` up to a line break is also considered a comment. 
+Comments do not affect the meaning of a program.
+
+[[line-information]]
+==== Line Information
+
+Optional information of source positions can be included. 
+LINE informations are only allowed if the module includes a SOURCE clause.
+The unsigned integer following the LINE clause is a source row; 
+an optional second unsigned integer is a source column. 
+AIR itself attaches no meaning to these numbers;
+they are passed through to the backends and to the debugger (see <<Debugging>>).
+
+.Syntax
+....
+Line = 'LINE' unsigned [ ':' unsigned ]
+....
+
+=== Binary Representation
+
+The binary representation is not specified in this version.
+
+[[Declarations]]
+== Declarations and scope rules
+
+Every identifier occurring in a program must be introduced by a declaration,
+unless it is a predeclared identifier. 
+Declarations also specify certain permanent properties of an object, 
+such as whether it is a constant, a type, a variable, or a procedure. 
+The identifier is then used to refer to the associated object.
+
+The _scope_ of an object _x_ extends textually from the point of its declaration 
+to the end of the block (module, procedure, or structured type) 
+to which the declaration belongs and hence to which the object is _local_.
+
+No identifier may denote more than one object within a given scope.
+
+A type _T_ of the form POINTER TO _T1_ can be declared at a point where _T1_ is still unknown. 
+The declaration of _T1_ must follow in the same module.
+
+An identifier declared in a module block may be followed by an export mark ("*") 
+in its declaration to indicate that it is exported. 
+An identifier _x_ exported by a module _M_ may be used in other modules,
+if they import _M_. The identifier is then denoted as _M!x_ in these
+modules and is called a _qualified identifier_.
+
+.Syntax of textual representation:
+....
+qualident  = [ident '!'] ident
+trident    = qualident '.' ident
+qortrident = qualident ['.' ident]
+identdef   = ident ['*']
+IdentList  = identdef { [','] identdef }
+....
+
+NOTE: Qualidents in AIR only consist of two parts, 
+an (optional) module name and a name of an element within this module.
+If the module name is omitted, the current module is assumed.
+The frontend has to combine the namespaces of the source language 
+(e.g. Simula block nesting, Oberon+ generic instances) with the module name to a single AIR module name.
+
+A trident denotes a member of a type: a field of a structured type,
+a procedure bound to a record type, 
+or a parameter or local variable of a procedure when used in the debug information.
+
+[[Types]]
+== Types
+
+Every value, variable, parameter, field, and array element has a type which is determined statically.
+The types are classified as basic types, structured types (arrays, structs and records), pointer types,
+procedure types, bound procedure types, and the task type. 
+
+.Syntax of textual representation:
+....
+TypeDeclaration = identdef '=' ( NamedType | ArrayType | StructType | RecordType
+                    | PointerType | ProcedureType | BoundProcedureType | ForeignType )
+NamedType       = qualident
+....
+
+A type declaration introduces a name for a type.
+Types are named when they are used in declarations, 
+i.e. all type constructors other than those in a type declaration must be denoted by a name. 
+This corresponds to MIL and keeps the textual representation and the AST simple.
+
+[[Basic]]
+=== Basic types
+
+The basic types are denoted by predeclared identifiers.
+
+[cols="1,3"]
+|===
+|*Name*                    |*Description*
+
+|bool                      |true (1) / false (0) value, represented as uint8
+|char                      |8-bit character, represented as uint8
+|int8, int16, int32, int64 |signed two's complement integers of the given width
+|uint8, uint16, uint32, uint64 |unsigned integers of the given width
+|float32                   |IEC 60559:1989 32-bit float
+|float64                   |IEC 60559:1989 64-bit float
+|===
+
+There is no integer type whose width depends on the target. 
+Source languages with a target dependent `INTEGER` are fixed to a width by the frontend.
+
+NOTE: `uint64` is present for completeness of the conversion and comparison instructions; 
+backends without native unsigned 64-bit support (LuaJIT) may implement it inefficiently. 
+Frontends should avoid it where the source language permits.
+
+The evaluation stack (see <<Expressions>>) does not distinguish all basic types; 
+loads widen and stores narrow according to the rules given there.
+
+[[Alias]]
+=== Alias types
+
+An alias type introduces a new name for an existing type. 
+Alias types are identical to their aliased type for all compatibility rules.
+
+.Syntax of textual representation:
+....
+AliasType = NamedType
+....
+
+[[Structured]]
+=== Structured types
+
+A structured type is an array, struct or record type. 
+A value of a structured type is called a _structured value_ or an _instance_.
+Instances have identity: a variable, field, array element or heap object of structured type _is_ an instance,
+it does not merely hold one.
+Consequently, loading a structured designator onto the evaluation stack yields a reference to the instance,
+not a copy (see <<Expressions>>), and copying an instance is an explicit operation (<<copy>>).
+
+Each instance is fully initialized when its storage is created: 
+numeric fields and elements to zero, `bool` to false, pointer, procedure, 
+bound procedure and task fields to nil, nested structured values recursively.
+
+[[Arrays]]
+==== Array types
+
+An array is a structure consisting of a number of elements which are all of the same type,
+called the element type. The number of elements of an array is called its length.
+The elements of the array are designated by indices,
+which are integers between 0 and the length minus one.
+
+.Syntax of textual representation:
+....
+ArrayType = ARRAY [ length ] OF NamedType
+length    = unsigned
+....
+
+Arrays declared without length are called _open arrays_. 
+An open array type may only be used as the base type of a pointer type or as the type of a formal parameter. 
+The length of an open array instance is fixed when the instance is created (<<newarr>>) and can be queried with <<len>>.
+The element type of an open array must not itself be an open array;
+frontends lower multi-dimensional open arrays to a descriptor struct and a flattened one-dimensional array.
+
+Array indices are not checked by AIR. 
+Access with an index outside of 0 to length - 1 is an error whose detection is implementation defined (TODO).
+
+[[Structs]]
+==== Struct types
+
+A struct type is a structured type consisting of a fixed number of fields of possibly different types.
+A struct carries no dynamic type information and cannot be extended nor have procedures bound to it.
+Structs are the representation of choice for frontend generated data such as lifted procedure frames,
+array descriptors and environments of name parameter thunks.
+
+.Syntax of textual representation:
+....
+StructType = STRUCT { FieldList [';'] } END
+FieldList  = IdentList ':' NamedType
+....
+
+[[Records]]
+==== Record types
+
+A record type is a structured type consisting of a fixed number of fields of possibly different types.
+In contrast to structs, records are extensible and procedures can be bound to them (see <<Procedures>>);
+every record instance carries its dynamic type, which is used by the instructions <<isinst>>, <<castobj>>,
+<<ldvirt>>, and <<callvirt>>.
+
+A record type can be declared as an extension of another record type. In the example
+
+....
+T0 = RECORD x: int32 END
+T1 = RECORD (T0) y: float64 END
+....
+
+T1 is a (direct) extension of T0 and T0 is the (direct) base type of T1.
+An extended type T1 consists of the fields of its base type and of the fields which are declared in T1.
+Fields declared in the extended record must not have the same name as a field of a base type.
+
+.Syntax of textual representation:
+....
+RecordType = RECORD [ '(' NamedType ')' ] { FieldList [';'] } END
+....
+
+A record type T1 _extends_ a record type T0 if T1 equals T0 or T1 is a direct or indirect extension of T0.
+The predeclared type `anyrec` is extended by every record type;
+it has no fields and is used as the common base for type tests and for the exception values of <<pcall>>.
+
+NOTE: In the MIL mapping structs become MIL structs and records become MIL objects.
+In the LuaJIT mapping both become tables; the dynamic type of a record is its metatable.
+Frontends should therefore use structs for all data which needs no type test and no dispatch.
+
+[[Pointers]]
+=== Pointer types
+
+Variables of a pointer type P assume as values references to instances of some structured type T, or nil.
+T is called the pointer base type of P. Pointer values are opaque;
+there are no operations on pointers other than loading, storing, comparing for equality,
+dereferencing by field or element access, type tests and narrowing.
+
+.Syntax of textual representation:
+....
+PointerType = POINTER TO ( NamedType | ANYREC )
+....
+
+The pointer base type ANYREC denotes a reference to an instance of any record type;
+such a pointer can be narrowed with <<castobj>> after a type test with <<isinst>>.
+
+Pointer values to managed instances are created by <<newobj>> and
+<<newarr>> and are reclaimed by a garbage collector when unreachable.
+Pointer values to unmanaged instances are created by <<newobj_um>> and
+<<newarr_um>> and are released by <<free>>;
+the two kinds are not distinguished by the type system.
+
+[[ProcedureTypes]]
+=== Procedure types
+
+Variables of a procedure type T have a reference to a procedure (or nil) as value.
+If a procedure P is assigned to a variable of type T, 
+the formal parameter lists and result types of P and T must _match_ (see <<Compatibility>>).
+
+.Syntax of textual representation:
+....
+ProcedureType = PROCEDURE [FormalParameters]
+....
+
+[[BoundProcedureTypes]]
+=== Bound procedure types
+
+Variables of a bound procedure type T combine a reference to an instance 
+with a reference to a procedure (or nil) as value.
+The instance is passed to the procedure as its receiver when the value is called with <<callmi>>.
+The formal parameter list of a bound procedure type does not include the receiver.
+
+.Syntax of textual representation:
+....
+BoundProcedureType = PROCEDURE '^' [FormalParameters]
+....
+
+Bound procedure values are created by <<ldmeth>> and <<ldvirt>>.
+They are the only closure-like value of AIR: 
+frontends represent type-bound procedure values, 
+name parameter thunks and lifted nested procedures with them, 
+where the bound instance is a record or a struct holding the captured environment.
+
+[[TaskType]]
+=== Task type
+
+The predeclared type `task` denotes a reference to a task, 
+i.e. a coroutine with its own control stack (see <<Tasks>>), or nil.
+Task values are opaque and can only be compared for equality and passed to the task instructions.
+
+[[Compatibility]]
+=== Type compatibility
+
+==== Same types
+
+Two types T1 and T2 are the _same_ if they are denoted by the same type declaration,
+or one is an alias of the other, or both are the same predeclared type. 
+Two structured, pointer, procedure or bound procedure types declared separately are never the same,
+even if they are structurally equal.
+
+==== Extension
+
+A record type T1 extends T0 as defined in <<Records>>. 
+A pointer type P1 = POINTER TO T1 extends P0 = POINTER TO T0 if T1 extends T0.
+Every pointer to a record type extends POINTER TO ANYREC.
+
+==== Matching formal parameter lists
+
+Two formal parameter lists match if they have the same number of parameters,
+the parameters at corresponding positions have the same mode (value or VAR) and the same type,
+and the result types are either both absent or the same. Parameter names are irrelevant.
+
+==== Assignment compatibility
+
+A value of type Te on the evaluation stack is _assignment compatible_ with a variable, parameter,
+field or element of type Tv (as operand of the `st*` instructions, of <<copy>>, 
+of value parameter passing and of <<ret>>) if one of the following holds:
+
+* Te and Tv are the same type;
+* Tv is a basic numeric type and Te is a basic numeric type of the same class
+  (signed, unsigned, floating point) and equal or smaller width;
+  frontends insert explicit <<conv>> instructions for all other numeric conversions;
+* Tv is `bool` or `char` and Te is `bool` or `char` respectively,
+  or Te is an integer type and the store is preceded by a `conv_u1`;
+* Tv is a pointer type and Te is nil or a pointer type which extends Tv;
+* Tv is a procedure type and Te is nil or a procedure type with a matching formal parameter list;
+* Tv is a bound procedure type and Te is nil or a bound procedure type with a matching formal parameter list;
+* Tv is `task` and Te is nil or `task`;
+
+Structured values cannot be stored with the `st*` instructions;
+they are copied with <<copy>>, or aliased by passing their reference to a parameter.
+
+==== Reference compatibility
+
+An actual argument for a VAR formal parameter of type Tf is compatible if it is a designator reference
+(see <<References>>) to a designator of type Ta and one of the following holds:
+
+* Ta and Tf are the same type;
+* Tf is a record type and Ta extends Tf;
+* Tf is an open array type and Ta is an array type (open or fixed) with the same element type.
+
+The second rule gives a VAR parameter of record type a dynamic type which may extend its static type;
+the third rule passes the length of the actual along with the reference.
+
+==== Argument compatibility
+
+An actual argument for a value formal parameter of type Tf is compatible
+if its type Ta is assignment compatible with Tf, 
+or Tf is an open array type and Ta is an array type with the same element type,
+or Tf is a record type and Ta extends Tf. 
+A structured argument is passed as a reference to the instance in both modes; 
+the copy required by the value semantics of the source language is made by the callee (see <<Parameters>>).
+
+==== Expression compatibility
+
+The permitted operand types of each instruction are defined with the instruction.
+The types of the evaluation stack, on which operators are defined, are described in <<Expressions>>.
+
+[[Expressions]]
+== Expressions
+
+Expressions are calculated using a conceptual evaluation stack. 
+The actual implementation is not supposed to be stack based. 
+The conceptual evaluation stack is made up of conceptual slots that can hold any of
+the stack types listed below.
+
+An expression consists of a sequence of instructions which push or pop
+values of a specified type to and from the evaluation stack.
+
+The evaluation stack is empty upon procedure entry.
+Its contents are entirely local to a procedure and are preserved across call instructions.
+Arguments to other procedures and their return values are also placed on the evaluation stack.
+The evaluation stack is not addressable. 
+At all times it is possible to deduce which one of the stack types is stored in any
+stack location at a specific point in the instruction stream.
+
+While AIR, in general, supports the full set of types described in <<Types>>,
+the AIR evaluation stack only requires that values be one of:
+
+- int32, a signed 32-bit integer; `bool`, `char`, `int8`, `int16`, `uint8` and `uint16`
+   are widened to int32 when loaded, `uint32` is loaded as int32 with the same bit pattern
+- int64, a signed 64-bit integer; `uint64` is loaded as int64 with the same bit pattern
+- float32, a 32-bit IEEE 754 floating point value
+- float64, a 64-bit IEEE 754 floating point value
+- ref, a reference to an instance of a structured type, or nil;
+  this is the stack type of all pointer values and of all structured values
+- procref, a reference to a procedure, or nil
+- methref, a bound procedure value, i.e. an opaque compound of an
+  instance reference and a procedure reference, or nil
+- task, a task reference, or nil
+- desig, a designator reference (see <<References>>).
+
+Instructions which store to a variable, parameter,
+field or element of a narrower basic type truncate the stack value to the width of the target;
+the effect is the same as the corresponding `conv` instruction.
+
+.Syntax of textual representation:
+....
+Expression = [Line] ExpInstr { ExpInstr | Line }
+ExpInstr = 'abs' | 'add' | 'and'
+    | ('call' | 'calli' | 'pcall' | 'pcalli') qualident
+    | ('callinst' | 'callvirt') trident
+    | 'callmi' qualident
+    | 'castobj' qualident
+    | 'ceq' | 'cgt' | 'cgt_un' | 'clt' | 'clt_un'
+    | 'conv_i1' | 'conv_i2' | 'conv_i4' | 'conv_i8' | 'conv_r4' | 'conv_r8'
+    | 'conv_u1' | 'conv_u2' | 'conv_u4' | 'conv_u8'
+    | 'curtask' | 'div' | 'div_un' | 'dup'
+    | 'isinst' qualident
+    | 'ldarg' (unsigned|ident) | 'ldloc' (unsigned|ident) | 'ldvar' qualident
+    | ('ldc_i4'|'ldc_i8') integer | ('ldc_r4'|'ldc_r8') number
+    | 'ldelem' qualident | 'ldfld' trident | 'len'
+    | 'ldmeth' trident | 'ldvirt' trident | 'ldproc' qualident
+    | 'ldnull' | 'ldstr' (string|hexstring)
+    | 'mul' | 'neg' | 'newarr' qualident | 'newarr_um' qualident
+    | 'newobj' qualident | 'newobj_um' qualident | 'newtask'
+    | 'not' | 'or' | 'rem' | 'rem_un'
+    | 'refarg' (unsigned|ident) | 'refloc' (unsigned|ident) | 'refvar' qualident
+    | 'reffld' trident | 'refelem' qualident
+    | 'shl' | 'shr' | 'shr_un' | 'sub' | 'taskdone' | 'xor'
+    | CondOp | ForeignExpInstr
+CondOp = 'IIF' Expression 'THEN' Expression 'ELSE' Expression 'END'
+ConstExpression = qualident | number | string | hexstring
+....
+
+[[References]]
+=== Designator references
+
+A _designator_ is a local variable, a parameter, a module variable,
+a field of an instance, or an element of an array instance.
+AIR has no addresses; instead a designator can be turned into a _designator
+reference_ with one of the `ref*` instructions.
+A designator reference is a second class value of stack type desig:
+
+* it can only be produced by `refloc`, `refarg`, `refvar`, `reffld` and `refelem`;
+* it can only be consumed as the actual argument of a VAR formal
+  parameter of a call instruction (and, in the foreign profile, by `caddr`);
+* inside the callee, the VAR parameter is read and written with `ldarg` and `starg`,
+  and forwarded with `refarg`;
+* it cannot be stored in a variable, field or element, cannot be compared,
+  converted or duplicated, and does not survive the call it is passed to.
+
+Because a designator reference is produced at the call site from a
+statically known designator and consumed by the call,
+backends are free to implement it as a pointer (C99, MIL), 
+as a table plus key with copy back after the call (LuaJIT), 
+or as any other mechanism. 
+A VAR parameter whose designator is a structured value is simply a reference to
+the instance and needs no copy back;
+for structured designators the `ref*` instructions are therefore equivalent to
+the corresponding `ld*` instructions, and either may be used.
+
+A designator reference denotes the designator as evaluated at the time
+of the `ref*` instruction:
+the instance and index operands of `reffld` and `refelem` are evaluated once.
+The callee observes and performs all reads and writes to the designator during the call;
+whether concurrent reads of the same designator through another path see the writes before
+the callee returns is implementation defined
+(this is the Oberon+ and Simula rule that aliasing between VAR parameters is undefined).
+
+[[Constructors]]
+=== Structured constants
+
+AIR has no constructors for structured values. 
+The only constants are those of basic type and the string and hex string literals of `ldstr`.
+Structured values with a constant initial value are built by code in the INIT procedure of the module (see <<Modules>>),
+from which the frontend may `copy` them whenever a fresh instance is needed.
+
+NOTE: MIL constructors (`ldc_obj`) push a struct value;
+in AIR a constructor would have to denote a constant _instance_ and push a ref to it,
+since structured values never appear on the evaluation stack (see <<copy>>).
+Such an instruction may be added if module initialization code proves too large for big constant tables.
+
+=== *abs – absolute value*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|abs |Absolute value of a signed integer or floating point value
+|===
+
+`…, value -> …, result`
+
+The result has the same stack type as the operand.
+Overflow of the most negative integer is not detected.
+
+=== *add*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|add |Add two values, returning a new value
+|===
+
+`…, value1, value2 -> …, result`
+
+Both operands must have the same stack type, which is also the type of the result.
+Integer overflow is not detected; 
+floating-point overflow returns +inf or -inf. The same applies to `sub` and `mul`.
+
+.Arithmetic operands compatibility
+[cols="2,2,2,2,2"]
+|===
+|*value1* |*int32* |*int64* |*float32* |*float64*
+
+|*int32*  |int32   |x       |x         |x
+|*int64*  |x       |int64   |x         |x
+|*float32*|x       |x       |float32   |x
+|*float64*|x       |x       |x         |float64
+|===
+
+=== *and, or, xor – bitwise operations*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|and |Bitwise AND of two integer values
+|or |Bitwise OR of two integer values
+|xor |Bitwise XOR of two integer values
+|===
+
+`…, value1, value2 -> …, result`
+
+Both operands must be int32 or both int64; the result has the same type.
+Boolean values are represented as int32 0 and 1, 
+so `and`, `or`and `xor` implement the non short-circuit boolean operators;
+short circuit evaluation is expressed with `IIF`.
+
+[[call]]
+=== *call – call a procedure*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|call _qualident_ |Call the procedure denoted by _qualident_
+|===
+
+`…, arg1, arg2 … argN -> …, retVal (not always returned)`
+
+The arguments are pushed in left to right order. 
+For each value parameter the argument must be argument compatible,
+for each VAR parameter it must be a reference compatible designator reference (<<Compatibility>>).
+If the procedure has a result type, the result is pushed after the call.
+Bound procedures cannot be called with `call`.
+
+[[calli]]
+=== *calli – indirect call*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|calli _qualident_ |Call the procedure referenced by the procref on the stack
+|===
+
+`…, arg1, arg2 … argN, procref -> …, retVal (not always returned)`
+
+_qualident_ names the procedure type of the procref. 
+Calling a nil procref is an error whose detection is implementation defined.
+
+[[callinst]]
+=== *callinst – call a bound procedure statically*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|callinst _trident_ |Call the procedure denoted by _trident_ with the given receiver
+|===
+
+`…, receiver, arg1 … argN -> …, retVal (not always returned)`
+
+_trident_ denotes a procedure bound to record type T.
+The receiver is a ref to an instance whose type extends T. 
+The procedure is selected statically; a redefinition in an extension of T is ignored.
+Frontends use `callinst` for super calls and for non-virtual
+(Simula: non `virtual`) class procedures.
+
+[[callvirt]]
+=== *callvirt – call a bound procedure by dynamic type*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|callvirt _trident_ |Call the procedure named by _trident_ as redefined for the dynamic type of the receiver
+|===
+
+`…, receiver, arg1 … argN -> …, retVal (not always returned)`
+
+_trident_ denotes a procedure bound to record type T.
+The receiver is a ref to an instance whose type extends T.
+The procedure called is the one bound under the same name to the dynamic type of the receiver or to
+its nearest base type which binds it.
+A nil receiver is an error whose detection is implementation defined.
+
+[[callmi]]
+=== *callmi – call a bound procedure value*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|callmi _qualident_ |Call the bound procedure value on the stack
+|===
+
+`…, arg1 … argN, methref -> …, retVal (not always returned)`
+
+_qualident_ names the bound procedure type of the methref.
+The receiver stored in the methref is passed as the receiver of the procedure;
+the arguments correspond to the formal parameters of the bound procedure type.
+Calling a nil methref is an error whose detection is implementation defined.
+
+[[castobj]]
+=== *castobj – narrow a reference*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|castobj _qualident_ |Reinterpret the ref as a pointer to record type _qualident_
+|===
+
+`…, ref -> …, ref`
+
+The stack value is not changed; the instruction changes the static type
+of the reference to POINTER TO _qualident_ for the purpose of the following instructions.
+The ref must be nil or reference an instance whose dynamic type extends _qualident_;
+otherwise the program is in error, and whether the error is detected (runtime trap) is
+implementation defined (TODO). 
+Frontends which need a checked narrowing (Simula `qua`) emit an explicit `isinst` test.
+
+=== *ceq, cgt, cgt_un, clt, clt_un – comparisons*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|ceq |Push 1 (int32) if value1 equals value2, else 0
+|cgt |Push 1 if value1 > value2, else 0
+|cgt_un |Push 1 if value1 > value2, unsigned or unordered, else 0
+|clt |Push 1 if value1 < value2, else 0
+|clt_un |Push 1 if value1 < value2, unsigned or unordered, else 0
+|===
+
+`…, value1, value2 -> …, result`
+
+The operands must have the same stack type.
+`ceq` is defined for all stack types except desig; 
+for ref, procref, methref and task it compares identity 
+(methref values are equal if both receiver and procedure are equal).
+The ordering comparisons are defined for the numeric stack types only.
+`cgt_un` and `clt_un` compare integers as unsigned;
+for floating point operands they return 1 if the operands
+are unordered (a NaN is involved) or the ordered comparison holds.
+The remaining comparisons (<>, <=, >=) are expressed with `not`.
+
+[[conv]]
+=== *conv – numeric conversion*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|conv_i1 |Convert to int8, then widen to int32
+|conv_i2 |Convert to int16, then widen to int32
+|conv_i4 |Convert to int32
+|conv_i8 |Convert to int64
+|conv_u1 |Convert to uint8, then widen to int32
+|conv_u2 |Convert to uint16, then widen to int32
+|conv_u4 |Convert to uint32, then reinterpret as int32
+|conv_u8 |Convert to uint64, then reinterpret as int64
+|conv_r4 |Convert to float32
+|conv_r8 |Convert to float64
+|===
+
+`…, value -> …, result`
+
+Integer to integer conversions truncate to the target width and then sign or zero extend as indicated.
+Floating point to integer conversions truncate toward zero;
+the result is undefined if the value is out of range or not a number.
+Integer to floating point conversions round to nearest.
+`conv_r4` on a float64 rounds to float32.
+
+=== *curtask – current task*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|curtask |Push a reference to the task executing this instruction
+|===
+
+`… -> …, task`
+
+The main program runs in the _main task_,
+which is never done and is returned by `curtask` when no other task is running. See <<Tasks>>.
+
+=== *div, div_un, rem, rem_un – integer and floating point division*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|div |Divide value1 by value2, signed integer or floating point
+|div_un |Divide value1 by value2, unsigned integer
+|rem |Remainder of value1 / value2, signed integer or floating point
+|rem_un |Remainder of value1 / value2, unsigned integer
+|===
+
+`…, value1, value2 -> …, result`
+
+Integer `div` truncates toward zero; `rem` has the sign of value1,
+so that `(a div b) * b + (a rem b) = a` (the C99 semantics).
+Floor division and modulo of Oberon+ (`DIV`, `MOD`) and the Simula `//` operator are lowered
+by the frontend onto these instructions.
+Division by zero is an error whose detection is implementation defined.
+Floating point `rem` is the IEEE remainder with the sign of value1.
+
+=== *dup – duplicate the top of the stack*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|dup |Duplicate the top value of the stack
+|===
+
+`…, value -> …, value, value`
+
+Not defined for desig values.
+
+=== *IIF – immediate if*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|IIF … THEN … ELSE … END |Conditional expression
+|===
+
+`…, cond -> …, result`
+
+The condition expression is evaluated and popped; if it is non-zero the THEN expression is evaluated,
+otherwise the ELSE expression. Both must push exactly one value of the same stack type.
+Only one branch is evaluated,
+which makes IIF the means to express short-circuit boolean operators and conditional expressions.
+
+[[isinst]]
+=== *isinst – type test*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|isinst _qualident_ |Push 1 if the ref is an instance of a type extending record type _qualident_, else 0
+|===
+
+`…, ref -> …, result`
+
+The result is int32. A nil ref yields 0. The ref must be a pointer to a record type.
+
+[[ldarg]]
+=== *ldarg – load argument*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|ldarg _unsigned_ or _ident_ |Load the parameter with the given number or name
+|===
+
+`… -> …, value`
+
+For a value parameter of basic, pointer, procedure, bound procedure or task type,
+the value of the parameter is pushed.
+For a VAR parameter, the current value of the referenced designator is pushed.
+For a parameter of structured type in either mode,
+a ref to the argument instance is pushed (see <<Parameters>>).
+Parameters are numbered from zero; for a bound procedure the receiver is parameter zero.
+
+=== *ldc – load constant*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|ldc_i4 _integer_ |Push an int32 constant
+|ldc_i8 _integer_ |Push an int64 constant
+|ldc_r4 _number_ |Push a float32 constant
+|ldc_r8 _number_ |Push a float64 constant
+|===
+
+`… -> …, value`
+
+Boolean and character constants are int32 constants.
+Unsigned constants are given as their bit pattern.
+
+[[ldelem]]
+=== *ldelem – load array element*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|ldelem _qualident_ |Load the element at _index_ of the array referenced by _array_
+|===
+
+`…, array, index -> …, value`
+
+_qualident_ is the array type. _array_ is a ref
+to an array instance (a pointer to array, a structured array value, or an open array parameter),
+_index_ an int32. If the element type is structured, a ref to the element instance is pushed;
+otherwise the element value is pushed and widened to its stack type.
+Index range violations and nil arrays are errors whose detection is implementation defined.
+
+[[ldfld]]
+=== *ldfld – load field*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|ldfld _trident_ |Load the field named by _trident_ of the instance referenced by _ref_
+|===
+
+`…, ref -> …, value`
+
+_trident_ names the field within its struct or record type;
+the ref must reference an instance of that type or an extension of it.
+If the field is structured, a ref to the field instance is pushed.
+A nil ref is an error whose detection is implementation defined.
+
+[[ldloc]]
+=== *ldloc – load local variable*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|ldloc _unsigned_ or _ident_ |Load the local variable with the given number or name
+|===
+
+`… -> …, value`
+
+Local variables are numbered from zero. A structured local yields a ref to its instance.
+
+[[ldmeth]]
+=== *ldmeth – bind a procedure to an instance*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|ldmeth _trident_ |Push a bound procedure value of the procedure _trident_ and the instance _ref_
+|===
+
+`…, ref -> …, methref`
+
+_trident_ denotes a procedure bound to a record type T;
+the ref must reference an instance whose type extends T, or be nil.
+The procedure is selected statically.
+The resulting methref has the bound procedure type with the formal parameters
+of the procedure without its receiver.
+
+[[ldvirt]]
+=== *ldvirt – bind a procedure by dynamic type*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|ldvirt _trident_ |Push a bound procedure value selecting the procedure by the dynamic type of _ref_
+|===
+
+`…, ref -> …, methref`
+
+As `ldmeth`, but the procedure bound is the redefinition of _trident_ for the dynamic type of the instance,
+as with <<callvirt>>. The ref must not be nil.
+Oberon+ `v.P` used as a value lowers to `ldvirt`.
+
+=== *ldnull – load nil*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|ldnull |Push nil
+|===
+
+`… -> …, nil`
+
+The nil value is assignment compatible with all pointer, procedure, bound procedure and task types.
+
+[[ldproc]]
+=== *ldproc – load procedure reference*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|ldproc _qualident_ |Push a reference to the procedure _qualident_
+|===
+
+`… -> …, procref`
+
+The procedure must not be bound to a type.
+
+=== *ldstr – load string literal*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|ldstr _string_ or _hexstring_ |Push a ref to a constant array of char (or uint8) of the literal's length
+|===
+
+`… -> …, ref`
+
+The instance referenced is immutable and has the type ARRAY OF char (for a string)
+or ARRAY OF uint8 (for a hexstring); its length is the length of the literal.
+It may be used wherever an open array of the element type is expected,
+in particular as the source of a <<copy>> or as an argument. Writing to it is an error.
+Whether equal literals share an instance is implementation defined.
+
+[[ldvar]]
+=== *ldvar – load module variable*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|ldvar _qualident_ |Load the module variable _qualident_
+|===
+
+`… -> …, value`
+
+A structured module variable yields a ref to its instance.
+
+[[len]]
+=== *len – array length*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|len |Push the length of the array referenced by _array_
+|===
+
+`…, array -> …, length`
+
+The length is an int32. For fixed size arrays the result is the declared length.
+A nil array is an error whose detection is implementation defined.
+
+=== *neg – negate*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|neg |Negate a signed integer or floating point value
+|===
+
+`…, value -> …, result`
+
+=== *not – bitwise complement*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|not |Bitwise complement of an int32 or int64
+|===
+
+`…, value -> …, result`
+
+Boolean negation of a value known to be 0 or 1 is expressed as `ldc_i4 1` followed by `xor`,
+or by comparing with `ceq` against `ldc_i4 0`;
+frontends should be consistent so that backends can pattern match.
+
+[[newarr]]
+=== *newarr – create a managed array*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|newarr _qualident_ |Allocate a managed array instance with _length_ elements of type _qualident_
+|===
+
+`…, length -> …, ref`
+
+_qualident_ is the element type. The array is fully initialized as described in <<Structured>>.
+The instance is reclaimed by the garbage collector when it is no longer reachable.
+The result has type POINTER TO ARRAY OF _qualident_.
+
+[[newarr_um]]
+=== *newarr_um – create an unmanaged array*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|newarr_um _qualident_ |Allocate an unmanaged array instance with _length_ elements of type _qualident_
+|===
+
+`…, length -> …, ref`
+
+As `newarr`, but the instance is not subject to garbage collection and has to be released with <<free>>.
+The element type must be _reference free_: a basic type,
+or a struct or array type whose fields and elements are recursively reference free,
+or a type of the foreign profile.
+This restriction guarantees that unmanaged memory never holds the only reference to a managed instance.
+
+[[newobj]]
+=== *newobj – create a managed instance*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|newobj _qualident_ |Allocate a managed instance of struct or record type _qualident_
+|===
+
+`… -> …, ref`
+
+The instance is fully initialized as described in <<Structured>>;
+a record instance carries _qualident_ as its dynamic type.
+The result has type POINTER TO _qualident_.
+The instance is reclaimed by the garbage collector when it is no longer reachable.
+
+[[newobj_um]]
+=== *newobj_um – create an unmanaged instance*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|newobj_um _qualident_ |Allocate an unmanaged instance of struct type _qualident_
+|===
+
+`… -> …, ref`
+
+As `newobj`, but the instance is not subject to garbage collection and has to be released with <<free>>.
+_qualident_ must be a reference free struct type (see <<newarr_um>>) or a type of the foreign profile.
+
+NOTE: Whether an implementation actually distinguishes managed from unmanaged instances is up
+to the implementation; the LuaJIT backend treats `newobj_um` as `newobj` and `free` as a no-op,
+the MIL backend maps the pairs to `newobjgc`/`newobj` and `newarrgc`/`newarr`.
+
+[[newtask]]
+=== *newtask – create a task*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|newtask |Create a task which will execute the bound procedure value _methref_
+|===
+
+`…, methref -> …, task`
+
+The methref must have a bound procedure type without parameters and without result.
+The task is created in the suspended state; its body starts executing on the first <<transfer>> to it.
+See <<Tasks>>.
+
+[[pcall]]
+=== *pcall, pcalli – protected calls*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|pcall _qualident_ |As `call`, but protected
+|pcalli _qualident_ |As `calli`, but protected
+|===
+
+`…, arg1 … argN -> …, exc` (pcall) +
+`…, arg1 … argN, procref -> …, exc` (pcalli)
+
+The protected call instructions call a proper procedure (one without result type) exactly like `call`
+and `calli`, and then push a value _exc_ of type POINTER TO ANYREC.
+There are no protected variants of `callinst`, `callvirt` and `callmi`:
+a frontend which needs to protect a bound procedure call generates a procedure
+which takes the methref (and the arguments) as parameters and performs the call with `callmi`,
+and protects that procedure with `pcall`. If the call completes normally, _exc_ is nil.
+If a <<raise>> is executed during the call in the same task,
+and no protected call nested inside this one is active,
+the callee's activation and all activations between it and the `raise` are abandoned,
+control continues after the protected call instruction, and _exc_ is the value raised.
+The stack depth at that point is the same as after a normal return.
+
+The state of designators passed as VAR arguments to the abandoned activations,
+and of module variables and instances modified by them, is whatever it was at the time of the `raise`;
+the state of local variables of the procedure containing the protected call is unspecified
+if they were modified after the protected call started and before the `raise`
+(this permits the C99 `setjmp` mapping).
+A raise executed in a task other than the one executing the protected call does not reach it (<<Tasks>>).
+
+[[ref]]
+=== *refarg, refloc, refvar, reffld, refelem – designator references*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|refarg _unsigned_ or _ident_ |Push a designator reference to the parameter
+|refloc _unsigned_ or _ident_ |Push a designator reference to the local variable
+|refvar _qualident_ |Push a designator reference to the module variable
+|reffld _trident_ |Pop a ref and push a designator reference to its field
+|refelem _qualident_ |Pop an array ref and an index and push a designator reference to the element
+|===
+
+`… -> …, desig` (refarg, refloc, refvar) +
+`…, ref -> …, desig` (reffld) +
+`…, array, index -> …, desig` (refelem)
+
+The resulting desig value must be consumed as the argument of a VAR parameter of the next call instruction;
+see <<References>>.
+`refarg` of a VAR parameter forwards the reference the parameter holds, not a reference to the parameter itself.
+`refelem` takes the array type as operand like `ldelem`.
+
+=== *shl, shr, shr_un – shifts*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|shl |Shift value left by amount bits
+|shr |Shift value right by amount bits, sign extending
+|shr_un |Shift value right by amount bits, zero extending
+|===
+
+`…, value, amount -> …, result`
+
+_value_ is int32 or int64 and determines the result type; _amount_ is int32.
+The result is undefined if _amount_ is negative or not less than the width of _value_.
+
+=== *sub, mul*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|sub |Subtract value2 from value1
+|mul |Multiply value1 by value2
+|===
+
+`…, value1, value2 -> …, result`
+
+Operand rules as for `add`.
+
+=== *taskdone – query task state*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|taskdone |Push 1 (int32) if the task has terminated, else 0
+|===
+
+`…, task -> …, result`
+
+A task is terminated once its body procedure has returned (see <<Tasks>>).
+A nil task is an error whose detection is implementation defined.
+
+[[Procedures]]
+== Procedures
+
+A procedure declaration consists of a procedure heading and a procedure body.
+The heading specifies the procedure identifier and the formal parameters.
+The body contains local variable declarations and statements.
+The procedure identifier must be repeated at the end of the procedure declaration.
+
+There are two kinds of procedures: proper procedures and function procedures.
+The latter are activated as a constituent of an expression and yield a result
+that is an operand of the expression. Proper procedures are activated by a procedure call.
+A procedure is a function procedure if its formal parameters specify a result type.
+Each control path of a function procedure must return a value.
+The result type cannot be a structured type.
+
+All variables declared within a procedure body are local to the procedure.
+Frontends shall provide variable names even if the source language doesn't require them,
+because they are the basis of AIR level debugging (<<Debugging>>).
+Local variables are numbered from left to right, starting from zero, and can be referenced by name or number.
+Structured local variables are instances which exist for the duration of the activation
+and are initialized on entry (<<Structured>>).
+
+Procedures cannot be nested.
+Nested procedures of the source language are lifted to module level by the frontend;
+up-level variables are placed in a frontend generated frame struct
+which is passed explicitly or bound with <<ldmeth>>.
+The call of a procedure within its declaration implies recursive activation.
+
+A procedure can be declared EXTERN or FOREIGN to indicate that it is implemented elsewhere.
+An EXTERN procedure has the AIR calling convention and is resolved by the loader
+or linker by its qualified name, or by the name given as string literal;
+it is implemented either in another AIR module compiled separately or by the runtime library
+in the host language of the backend (this is the mechanism by which the Simula
+`text`, `SIMSET` and `SIMULATION` runtime, Luon `EXTERN` and Oberon+ `DEFINITION` modules reach the program).
+A FOREIGN procedure uses the C calling convention and belongs to the foreign profile (TODO).
+
+At most one procedure can be declared INIT,
+in which case it is automatically called at module load time after the imported modules have been loaded.
+
+Procedures may be bound to a record type declared in the same module.
+The binding is expressed by prefixing the procedure name with the name
+of the record type T the procedure is bound to.
+The receiver parameter is explicit and the first parameter in the parameter list;
+it must be of type POINTER TO T. If a procedure P is bound to a record type T0,
+it is implicitly also bound to any record type T1 which is an extension of T0.
+A procedure P' with the same name may be explicitly bound to T1, in which case it overrides the binding of P;
+P' is a redefinition of P for T1 and its formal parameters must match those of P except for the receiver type.
+The name of a bound procedure must be unique within the record type to which it is bound.
+Bound procedures cannot be INIT.
+
+.Syntax of textual representation:
+....
+ProcedureDeclaration = ProcedureHeading
+                         ( ['INIT'] [';'] ProcedureBody
+                         | [';'] EXTERN [string]
+                         | [';'] FOREIGN [string] )
+
+ProcedureHeading     = PROCEDURE [Line] [Binding] identdef [FormalParameters]
+Binding              = ident '.'
+
+ProcedureBody        = [VAR { LocalDeclaration [';'] }]
+                       BEGIN StatementSequence END ident
+
+LocalDeclaration     = IdentList ':' NamedType
+....
+
+[[Parameters]]
+=== Formal parameters
+
+Formal parameters are identifiers declared in the formal parameter list of a procedure.
+They correspond to actual parameters specified in the procedure call.
+The correspondence between formal and actual parameters is established when the procedure is called.
+
+There are two parameter modes.
+A _value parameter_ is a local variable of the callee initialized with the value of the argument.
+A _VAR parameter_, marked with VAR, denotes the designator of the caller for the duration of the call;
+the argument must be a designator reference (<<References>>).
+
+A parameter of structured type is, in both modes, a reference to the argument instance,
+carrying its dynamic type and, for open arrays, its length; the argument is a ref,
+and `ref*` and `ld*` loads of the argument designator are equivalent.
+AIR does not copy structured arguments.
+A frontend which needs the value semantics of the source language
+for a value parameter declares a local variable of the parameter type in the callee
+(or allocates an instance with `newarr` for an open array) and copies the argument into it on entry (<<copy>>);
+it may omit the copy where the parameter is never modified and the argument cannot change during the call.
+For a structured parameter the mode therefore only states intent:
+a program which modifies the argument instance through a value parameter is in error,
+but the validator does not detect this.
+
+NOTE: Making the copy in the callee puts it at one site per procedure instead of one per call,
+and lets the frontend, which knows whether the parameter is modified, decide whether a copy is needed at all.
+Backends need no by-value structure passing convention.
+
+Name parameters of Simula and Algol 60 are not a parameter mode of AIR.
+They are lowered by the frontend to a pair of bound procedure values
+(or a single one with a mode argument) whose receiver is the caller's frame struct.
+
+Frontends shall provide parameter names, even if the source language allows to omit them (<<Debugging>>).
+Formal parameters are numbered from left to right, starting from zero.
+In case of a bound procedure, the receiver parameter is at position zero.
+The result type cannot be a structured type or an open array.
+
+.Syntax of textual representation:
+....
+FormalParameters = '(' [ FPSection { ';' FPSection } ] ')' [ ':' ReturnType ]
+ReturnType       = NamedType
+FPSection        = [VAR] [Line] ident { [','] [Line] ident } ':' NamedType
+....
+
+=== *line*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|LINE _unsigned_ [':' _unsigned_] |Source row and optional column of the following instructions
+|===
+
+`… -> …`
+
+This is a special operation representing line information (see <<line-information>>)
+when embedded in a statement sequence or expression.
+The line operation is neither a statement nor an expression instruction
+and shall be ignored besides updating the source position.
+
+[[Statements]]
+== Statements
+
+Two kinds of statements are defined - simple and compound statements.
+
+A simple statement is an instruction which pops zero or more values of a specified type
+from the evaluation stack.
+
+A compound statement starts with the `IF`, `LOOP`, `REPEAT`, `SWITCH`,
+or `WHILE` instruction, and ends with the `END` instruction.
+
+The evaluation stack is subject to strict consistency constraints across control-flow boundaries:
+
+. The evaluation stack must be entirely empty upon entry to a procedure.
+. When the `ret` statement is executed, the stack must be exactly empty for a proper procedure,
+  or contain exactly one value of the result type for a function procedure.
+. For compound statements and labels, the depth and types
+  of the evaluation stack must be identical across all control-flow paths that reach them (stack consistency).
+  Frontends are expected to keep the stack empty at statement boundaries;
+  backends may rely on this for the LuaJIT mapping.
+. No desig value may be on the stack at a control-flow boundary.
+
+.Syntax of textual representation:
+....
+StatementSequence = { Statement | ExpInstr | Line }
+Statement = SimpleStatement | CompoundStatement
+SimpleStatement = 'copy' qualident | 'exit' | 'free'
+    | 'goto' ident | 'label' ident | 'pop' | 'raise' | 'ret'
+    | 'starg' (unsigned|ident) | 'stelem' qualident | 'stfld' trident
+    | 'stloc' (unsigned|ident) | 'stvar' qualident | 'transfer'
+    | ForeignStatement
+CompoundStatement = IfThenElse | Loop | RepeatUntil | Switch | WhileDo
+IfThenElse  = 'IF' Expression 'THEN' StatementSequence
+              [ 'ELSE' StatementSequence ] 'END'
+Loop        = 'LOOP' StatementSequence 'END'
+RepeatUntil = 'REPEAT' StatementSequence 'UNTIL' Expression 'END'
+Switch      = 'SWITCH' Expression
+              { 'CASE' CaseLabel { [','] CaseLabel } 'THEN' StatementSequence }
+              [ 'ELSE' StatementSequence ] 'END'
+CaseLabel   = integer [ '..' integer ]
+WhileDo     = 'WHILE' Expression 'DO' StatementSequence 'END'
+....
+
+[[copy]]
+=== *copy – copy a structured value*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|copy _qualident_ |Copy the contents of the instance _src_ into the instance _dst_
+|===
+
+`…, dst, src -> …`
+
+_qualident_ is the static type of both operands, which are refs to instances.
+For a struct or record type, the fields of _qualident_ are copied;
+fields of an extension the dynamic type of _dst_ or _src_ may have are not touched.
+For an array type, all elements are copied; for open arrays the lengths of _dst_ and _src_ must be equal,
+otherwise the program is in error (detection implementation defined).
+Nested structured fields and elements are copied recursively; pointer fields are copied as references (shallow).
+The copy has the effect of an assignment of the source language with value semantics.
+A nil operand is an error whose detection is implementation defined.
+
+NOTE: `copy` is the only way to copy a structured value.
+Backends map it to a `memcpy` or struct assignment (C99, MIL),
+or to a type driven deep copy (LuaJIT); since the type is an explicit operand,
+the LuaJIT backend can generate one copy procedure per type.
+
+NOTE: This differs from MIL, where structured values are pushed and popped
+as values (`ldobj`, `stobj`, `ldc_obj`), each with a static type assigned by the validator.
+The difference is not about typing but about the identity and lifetime
+of the anonymous temporary a struct value on the stack denotes:
+`ldobj a … stobj b` copies `a` into a temporary and the temporary into `b`,
+which C absorbs for free (struct temporaries are native and elided by the C compiler),
+so it is the right model for a C-shaped IR with a C backend.
+Any other backend must either pay two copies
+and an allocation per load (a fresh table in LuaJIT, a variable size slot in an interpreter),
+or prove itself that nothing between the load
+and the store modifies `a` (a call, an alias through a VAR parameter, another task),
+which is exactly the kind of analysis the level rule of <<Overview>> keeps out of backends.
+With `copy` there is one copy, both operands are designators,
+and the frontend has decided that this is the intended assignment.
+It also keeps all stack slots scalar or reference sized,
+so that stack depth is slot count for the validator, the interpreter and both backends,
+and it removes the need for a by-value structure convention for parameters and results.
+
+=== *exit – leave a loop*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|exit |Terminate the innermost enclosing LOOP, WHILE or REPEAT statement
+|===
+
+`… -> …`
+
+Control continues after the END of the loop.
+
+[[free]]
+=== *free – release an unmanaged instance*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|free |Release the unmanaged instance referenced by _ref_
+|===
+
+`…, ref -> …`
+
+The ref must have been created by <<newobj_um>>, <<newarr_um>> or a foreign allocation;
+after `free` any use of the instance is an error. A nil ref has no effect.
+Applying `free` to a managed instance is an error whose detection is implementation defined.
+
+=== *goto, label – local jump*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|goto _ident_ |Jump to the label _ident_ in the same procedure
+|label _ident_ |Define the label _ident_
+|===
+
+`… -> …`
+
+Labels are local to a procedure and may be placed anywhere in its statement sequence,
+including inside compound statements.
+A `goto` may jump into or out of compound statements as long as stack consistency holds.
+Non-local jumps of the source language (Simula, Algol 60) are lowered by the frontend
+to <<raise>> against a protected call in the target activation, followed by a local `goto`.
+
+=== *IF, LOOP, REPEAT, WHILE – structured control flow*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|IF … THEN … ELSE … END |Execute THEN if the condition is non-zero, else ELSE
+|LOOP … END |Repeat the statement sequence until an `exit` is executed
+|REPEAT … UNTIL … END |Repeat the statement sequence until the condition is non-zero
+|WHILE … DO … END |Repeat the statement sequence while the condition is non-zero
+|===
+
+The condition expressions push a single int32 which is popped by the compound statement.
+
+=== *pop – discard the top of the stack*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|pop |Remove the top value of the stack
+|===
+
+`…, value -> …`
+
+Not defined for desig values.
+
+[[raise]]
+=== *raise – raise an exception*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|raise |Abandon the current activation chain up to the innermost active protected call of the current task
+|===
+
+`…, ref -> `
+
+The ref must be a non-nil pointer to a record instance; it becomes the result of the protected call (<<pcall>>).
+If no protected call is active in the current task, the program terminates with an implementation defined error.
+Any pending protected call of the abandoned activations is deactivated.
+The instruction does not return.
+
+[[ret]]
+=== *ret – return from a procedure*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|ret |Return to the caller
+|===
+
+`… ->` (proper procedure) or `…, value ->` (function procedure)
+
+The value must be assignment compatible with the result type.
+If the procedure is the body of a task, `ret` terminates the task (see <<Tasks>>).
+
+=== *starg, stloc, stvar – store to a variable*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|starg _unsigned_ or _ident_ 
+|Store the value into the parameter; through the reference for a VAR parameter
+
+|stloc _unsigned_ or _ident_ 
+|Store the value into the local variable
+
+|stvar _qualident_ 
+|Store the value into the module variable
+|===
+
+`…, value -> …`
+
+The value must be assignment compatible with the type of the target.
+Structured values cannot be stored (use <<copy>>).
+Storing to a VAR parameter writes the caller's designator.
+
+=== *stelem, stfld – store to an element or field*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|stelem _qualident_ 
+|Store the value into the element _index_ of the array _array_
+
+|stfld _trident_ 
+|Store the value into the field _trident_ of the instance _ref_
+|===
+
+`…, array, index, value -> …` (stelem) +
+`…, ref, value -> …` (stfld)
+
+Operand rules as for <<ldelem>> and <<ldfld>>;
+the value must be assignment compatible with the element or field type, and structured values cannot be stored.
+
+[[SwitchStmt]]
+=== *SWITCH – multi-way branch*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|SWITCH … CASE … THEN … ELSE … END 
+|Select a statement sequence by an integer value
+|===
+
+`…, value -> …`
+
+The expression pushes an int32 or int64 which is popped by the statement.
+The statement sequence of the first CASE whose label list contains the value is executed;
+a label is an integer or an inclusive range.
+If no CASE matches, the ELSE sequence is executed if present.
+Label values must not overlap.
+Backends may implement the statement as a jump table, a binary search, or a chain of comparisons.
+
+[[transfer]]
+=== *transfer – switch to another task*
+
+[cols="1,3"]
+|===
+|*Text Format* |*Description*
+
+|transfer 
+|Suspend the current task and continue the task _task_
+|===
+
+`…, task -> …`
+
+The current task is suspended after this instruction;
+the target task continues at the point where it was suspended, or starts its body if it has never run.
+Transferring to the current task has no effect.
+Transferring to a terminated task or to nil is an error whose detection is implementation defined.
+The target task becomes the current task and the previous current task becomes the target's _resumer_.
+See <<Tasks>>.
+
+[[Tasks]]
+== Tasks
+
+A _task_ is a thread of control with its own stack of procedure activations.
+Tasks are executed one at a time: exactly one task, the _current task_, is running,
+all others are suspended at a `transfer` instruction or have not yet started or have terminated.
+Control passes between tasks only by explicit `transfer` instructions or by task termination;
+there is no preemption, so tasks are coroutines.
+
+The program starts in the _main task_, which executes the INIT procedures of the modules.
+Other tasks are created with <<newtask>> from a parameterless bound procedure value;
+the receiver of the bound procedure is the natural place for the state
+of the task (e.g. the Simula object whose body the task executes).
+
+A task whose body procedure returns is _terminated_.
+Control then transfers to the task's resumer, i.e. the task which most recently transferred to it.
+This is the only continuation rule AIR knows;
+a frontend which needs a different one transfers explicitly before the body returns.
+If the main task returns from the program's INIT chain, the program ends regardless of other tasks.
+
+A `raise` propagates along the activation chain of the current task only; it never crosses a task boundary.
+A raise which reaches the bottom of a task other than the main task terminates the program
+with an implementation defined error, as if no protected call were active.
+`transfer` inside a protected call is allowed;
+the protected call remains active while its task is suspended,
+and a `raise` in the task after it has been resumed reaches it as usual.
+
+Storage referenced only from a suspended task's activations remains reachable
+for the garbage collector as long as the task is reachable.
+A suspended task which is not terminated and no longer reachable may be reclaimed together with its stack.
+
+NOTE: Tasks map to separate activation stacks in the AIR interpreter and
+to a runtime library using `ucontext` or a small assembly stack switch in the MIL and C99 backends;
+MIL itself needs no coroutine instructions. Lua coroutines are asymmetric (`resume`/`yield`),
+so the LuaJIT backend implements the symmetric `transfer` with a dispatcher:
+the current coroutine yields the target task to a scheduler loop which resumes it.
+A transfer thus costs two coroutine switches, and the main task is the scheduler's own coroutine,
+not the Lua main thread.
+
+[[Modules]]
+== Modules
+
+A module is a collection of declarations of constants, types, variables,
+and procedures, together with a procedure (INIT) for the purpose of assigning initial values to the variables.
+A module is a compilation unit.
+
+.Syntax of textual representation:
+....
+module     = MODULE [Line] ident [';']
+             [ SOURCE string [';'] ]
+             { ImportList | DeclarationSequence }
+             END [Line] ident ['.']
+
+ImportList = IMPORT import { [','] import } [';']
+import     = [Line] ident
+
+DeclarationSequence = { CONST { ConstDeclaration [';'] }
+            | TYPE { TypeDeclaration [';'] }
+            | VAR { VariableDeclaration [';'] }
+            | ProcedureDeclaration [';'] }
+
+ConstDeclaration    = identdef '=' ConstExpression
+VariableDeclaration = IdentList ':' NamedType
+....
+
+The import list specifies the names of the imported modules.
+If a module A is imported by a module M and A exports an identifier `x`,
+then `x` is referred to as `A!x` within M. A module must not import itself (neither directly nor indirectly).
+Identifiers that are to be exported must be marked by an export mark in their declaration.
+
+The optional SOURCE clause is used to specify the source file from which the present module was derived.
+If there is a SOURCE clause, LINE clauses have to be specified as well.
+
+Constants are named literal values; they may be used wherever a literal of the same kind is permitted.
+Module variables are initialized to the zero values of their type before the INIT procedure runs;
+any other initial value, including constant tables, is assigned by the INIT procedure (see <<Constructors>>).
+
+AIR has no generic modules.
+Generic modules of the source language (Oberon+) are instantiated by the frontend
+into ordinary AIR modules whose names encode the actual meta parameters.
+
+The Simula frontend generates one module per program and one module per external class or procedure;
+the predefined classes `SIMSET` and `SIMULATION`
+and the `text` runtime are EXTERN procedures of a runtime module,
+so that the Simula runtime library can be written once in the host language of each backend, or in AIR itself.
+
+[[Debugging]]
+== Symbolic and debug information
+
+TODO
+
+[[CompleteSyntax]]
+[appendix]
+== Complete syntax of the textual representation
+
+....
+module     = MODULE [Line] ident [';']
+             [ SOURCE string [';'] ]
+             { ImportList | DeclarationSequence }
+             END [Line] ident ['.']
+ImportList = IMPORT import { [','] import } [';']
+import     = [Line] ident
+
+DeclarationSequence = { CONST { ConstDeclaration [';'] }
+            | TYPE { TypeDeclaration [';'] }
+            | VAR { VariableDeclaration [';'] }
+            | ProcedureDeclaration [';'] }
+ConstDeclaration    = identdef '=' ConstExpression
+VariableDeclaration = IdentList ':' NamedType
+
+qualident  = [ident '!'] ident
+trident    = qualident '.' ident
+qortrident = qualident ['.' ident]
+identdef   = ident ['*']
+IdentList  = identdef { [','] identdef }
+
+TypeDeclaration = identdef '=' ( NamedType | ArrayType | StructType | RecordType
+                    | PointerType | ProcedureType | BoundProcedureType | ForeignType )
+NamedType       = qualident
+ArrayType       = ARRAY [ length ] OF NamedType
+length          = unsigned
+StructType      = STRUCT { FieldList [';'] } END
+RecordType      = RECORD [ '(' NamedType ')' ] { FieldList [';'] } END
+FieldList       = IdentList ':' NamedType
+PointerType     = POINTER TO ( NamedType | ANYREC )
+ProcedureType   = PROCEDURE [FormalParameters]
+BoundProcedureType = PROCEDURE '^' [FormalParameters]
+ForeignType     = CSTRUCT { FieldList [';'] } END
+                | CUNION { FieldList [';'] } END
+                | CARRAY [ length ] OF NamedType
+                | CPOINTER TO ( NamedType | ANY )
+
+ProcedureDeclaration = ProcedureHeading
+                         ( ['INIT'] [';'] ProcedureBody
+                         | [';'] EXTERN [string]
+                         | [';'] FOREIGN [string] )
+ProcedureHeading     = PROCEDURE [Line] [Binding] identdef [FormalParameters]
+Binding              = ident '.'
+ProcedureBody        = [VAR { LocalDeclaration [';'] }]
+                       BEGIN StatementSequence END ident
+LocalDeclaration     = [IdentList ':'] NamedType
+FormalParameters     = '(' [ FPSection { ';' FPSection } ] ')' [ ':' ReturnType ]
+ReturnType           = NamedType
+FPSection            = [VAR] [ [Line] ident { [','] [Line] ident } ':'] NamedType
+
+ConstExpression = qualident | number | string | hexstring
+
+Expression = [Line] ExpInstr { ExpInstr | Line }
+ExpInstr = 'abs' | 'add' | 'and'
+    | ('call' | 'calli' | 'pcall' | 'pcalli') qualident
+    | ('callinst' | 'callvirt') trident
+    | 'callmi' qualident
+    | 'castobj' qualident
+    | 'ceq' | 'cgt' | 'cgt_un' | 'clt' | 'clt_un'
+    | 'conv_i1' | 'conv_i2' | 'conv_i4' | 'conv_i8' | 'conv_r4' | 'conv_r8'
+    | 'conv_u1' | 'conv_u2' | 'conv_u4' | 'conv_u8'
+    | 'curtask' | 'div' | 'div_un' | 'dup'
+    | 'isinst' qualident
+    | 'ldarg' (unsigned|ident) | 'ldloc' (unsigned|ident) | 'ldvar' qualident
+    | ('ldc_i4'|'ldc_i8') integer | ('ldc_r4'|'ldc_r8') number
+    | 'ldelem' qualident | 'ldfld' trident | 'len'
+    | 'ldmeth' trident | 'ldvirt' trident | 'ldproc' qualident
+    | 'ldnull' | 'ldstr' (string|hexstring)
+    | 'mul' | 'neg' | 'newarr' qualident | 'newarr_um' qualident
+    | 'newobj' qualident | 'newobj_um' qualident | 'newtask'
+    | 'not' | 'or' | 'rem' | 'rem_un'
+    | 'refarg' (unsigned|ident) | 'refloc' (unsigned|ident) | 'refvar' qualident
+    | 'reffld' trident | 'refelem' qualident
+    | 'shl' | 'shr' | 'shr_un' | 'sub' | 'taskdone' | 'xor'
+    | CondOp | ForeignExpInstr
+CondOp = 'IIF' Expression 'THEN' Expression 'ELSE' Expression 'END'
+ForeignExpInstr = 'ldind' qualident | 'caddr' | 'sizeof' qualident
+
+StatementSequence = { Statement | ExpInstr | Line }
+Statement = SimpleStatement | CompoundStatement
+SimpleStatement = 'copy' qualident | 'exit' | 'free'
+    | 'goto' ident | 'label' ident | 'pop' | 'raise' | 'ret'
+    | 'starg' (unsigned|ident) | 'stelem' qualident | 'stfld' trident
+    | 'stloc' (unsigned|ident) | 'stvar' qualident | 'transfer'
+    | ForeignStatement
+ForeignStatement = 'stind' qualident
+CompoundStatement = IfThenElse | Loop | RepeatUntil | Switch | WhileDo
+IfThenElse  = 'IF' Expression 'THEN' StatementSequence
+              [ 'ELSE' StatementSequence ] 'END'
+Loop        = 'LOOP' StatementSequence 'END'
+RepeatUntil = 'REPEAT' StatementSequence 'UNTIL' Expression 'END'
+Switch      = 'SWITCH' Expression
+              { 'CASE' CaseLabel { [','] CaseLabel } 'THEN' StatementSequence }
+              [ 'ELSE' StatementSequence ] 'END'
+CaseLabel   = integer [ '..' integer ]
+WhileDo     = 'WHILE' Expression 'DO' StatementSequence 'END'
+
+Line = 'LINE' unsigned [ ':' unsigned ]
+
+ident     = ( letter | '_' ) { letter | digit | '_' | '$' }
+integer   = ['+' | '-'] unsigned
+unsigned  = digit {digit} ['O'|'Z'] | digit {hexDigit} 'H'
+float     = digit {digit} '.' {digit} [Exponent]
+number    = ['+' | '-'] (float | unsigned)
+Exponent  = 'E' ['+' | '-'] digit {digit}
+string    = ''' {character} ''' | '"' {character} '"'
+hexstring = '#' {hexDigit} '#'
+....
+
+[appendix]
+[bibliography]
+== References
+
+* [[[MIL]]] https://github.com/micron-language/specification/blob/master/The_Micron_Intermediate_Language_Specification.adoc
+
+TODO

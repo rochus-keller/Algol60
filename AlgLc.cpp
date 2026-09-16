@@ -9,7 +9,8 @@
 #include <Algol60/AlgLexer.h>
 #include <Algol60/AlgAst.h>
 #include <Algol60/AlgValidator.h>
-
+#include <Algol60/AlgAirGen.h>
+#include <Algol60/AirRenderer.h>
 
 static QStringList collectFiles( const QDir& dir )
 {
@@ -67,7 +68,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("https://github.com/rochus-keller/Algol");
     a.setApplicationName("AlgLc");
-    a.setApplicationVersion("2026-09-04");
+    a.setApplicationVersion("2026-09-16");
 
     QTextStream out(stdout);
     out << "AlgLc version: " << a.applicationVersion() <<
@@ -78,6 +79,8 @@ int main(int argc, char *argv[])
     bool dump = false;
     QString ns;
     QString mod;
+    bool air = false;
+    bool rt = false;
     const QStringList args = QCoreApplication::arguments();
     for( int i = 1; i < args.size(); i++ ) // arg 0 enthaelt Anwendungspfad
     {
@@ -87,6 +90,8 @@ int main(int argc, char *argv[])
             out << "  reads Algol60 sources (files or directories) and translates them to corresponding Lua code." << endl;
             out << "options:" << endl;
             out << "  -dst      dump abstract syntax trees to files" << endl;
+            out << "  -air      generate AIR files" << endl;
+            out << "  -rt       generate the Algol60Rt interface module" << endl;
             out << "  -o=path   path where to save generated files (default like first source)" << endl;
             out << "  -ns=name  namespace for the generated files (default empty)" << endl;
             out << "  -mod=name directory of the generated files (default empty)" << endl;
@@ -94,6 +99,10 @@ int main(int argc, char *argv[])
             return 0;
         }else if( args[i] == "-dst" )
             dump = true;
+        else if( args[i] == "-air" )
+            air = true;
+        else if( args[i] == "-rt" )
+            rt = true;
         else if( args[i].startsWith("-o=") )
             outPath = args[i].mid(3);
         else if( args[i].startsWith("-ns=") )
@@ -109,11 +118,13 @@ int main(int argc, char *argv[])
             return -1;
         }
     }
-    if( dirOrFilePaths.isEmpty() )
+    if( dirOrFilePaths.isEmpty() && !rt )
     {
         qWarning() << "no file or directory to process; quitting (use -h option for help)" << endl;
         return -1;
     }
+    if( outPath.isEmpty() && rt )
+        outPath = QDir::currentPath();
 
     QStringList files;
     foreach( const QString& path, dirOrFilePaths )
@@ -127,10 +138,20 @@ int main(int argc, char *argv[])
             files << path;
     }
 
+    if( rt )
+    {
+        QFile f( QDir(outPath).absoluteFilePath("Algol60Rt.air") );
+        if( f.open(QIODevice::WriteOnly) )
+        {
+            Air::AsmRenderer r(&f);
+            Alg::AirGen::generateRuntime(&r);
+        }else
+            qCritical() << "cannot open for writing:" << f.fileName();
+    }
+
     QElapsedTimer timer;
     timer.start();
-    int ok = 0;
-    int valid = 0;
+    int ok = 0, valid = 0, generated = 0;
     foreach( const QString& path, files )
     {
         qDebug() << "processing" << path;
@@ -162,10 +183,27 @@ int main(int argc, char *argv[])
             if( !v.validate(module) )
             {
                 foreach( const Alg::Validator::Error& e, v.errors )
-                    qCritical() << "validator error:" << e.pos.d_row << e.pos.d_col << e.msg;
+                    qCritical() << "validator:" << e.path << e.pos.d_row << e.pos.d_col << e.msg;
             }else
             {
                 valid++;
+                if( air )
+                {
+                    QFile f( path + ".air" );
+                    if( !f.open(QIODevice::WriteOnly) )
+                        qCritical() << "cannot open for writing:" << f.fileName();
+                    else
+                    {
+                        Air::AsmRenderer r(&f);
+                        Alg::AirGen g(&mdl);
+                        if( g.generate(module, &r) )
+                            generated++;
+                        else
+                            foreach( const Alg::AirGen::Error& e, g.errors )
+                                qCritical() << "airgen:" << e.path << e.pos.d_row
+                                            << e.pos.d_col << e.msg;
+                    }
+                }
             }
         }
         if( dump && module )
@@ -173,8 +211,8 @@ int main(int argc, char *argv[])
     #endif
 
     }
-    qDebug() << "#### finished with" << ok << "parsed," << valid << "validated"
-             << " of total" << files.size() << "files"
+    qDebug() << "#### finished with" << ok << "parsed," << valid << "validated,"
+             << generated << "generated of total" << files.size() << "files"
              << "in" << timer.elapsed() << " [ms]";
     return 0;
 }

@@ -2020,7 +2020,14 @@ Expression* Parser2::unsigned_number() {
     } else if( la.d_type == Tok_decimal_number ) {
         expect(Tok_decimal_number, false, "unsigned_number");
         Expression* res = new Expression(Expression::RealConst, toRowCol(cur));
-        res->r = cur.d_val.toDouble();
+        // the exponent may be written '#' or the decimal exponent symbol, and the
+        // mantissa may be omitted, as in #6 or .6#-6
+        QByteArray num = cur.d_val;
+        num.replace("\xe2\x8f\xa8", "e"); // U+23E8
+        num.replace('#', 'e');
+        if( num.startsWith('e') )
+            num = "1" + num;
+        res->r = num.toDouble();
         res->setType(mdl->getType(Type::Real));
         return res;
     } else {

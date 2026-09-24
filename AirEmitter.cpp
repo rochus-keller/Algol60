@@ -170,7 +170,7 @@ quint32 Emitter::addLocal(const Quali& typeRef, const QByteArray& name, const Ro
 
 quint32 Emitter::addArgument(const Quali& typeRef, const QByteArray& name, bool isVarParam, const RowCol& pos)
 {
-    Q_ASSERT( !d_proc.isEmpty() );
+    Q_ASSERT( !d_proc.isEmpty() || d_typeKind == EmiTypes::ProcType || d_typeKind == EmiTypes::BoundProcType );
     Q_ASSERT( !typeRef.second.isEmpty() && !name.isEmpty() );
     ProcData::Var p(typeRef, name, pos.d_row);
     p.isVarParam = isVarParam;

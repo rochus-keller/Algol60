@@ -113,7 +113,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("https://github.com/rochus-keller/Algol");
     a.setApplicationName("AlgLc");
-    a.setApplicationVersion("2026-09-24");
+    a.setApplicationVersion("2026-09-25");
 
     QTextStream out(stdout);
     out << "AlgLc version: " << a.applicationVersion() <<

@@ -18,7 +18,7 @@
 */
 
 #include <Algol60/AirAstRenderer.h>
-#include <QtDebug>
+#include <Algol60/AirValidator.h>
 using namespace Air;
 using Alg::RowCol;
 
@@ -80,16 +80,12 @@ void AstRenderer::endModule()
         module->hasErrors = true;
     else if( runValidator )
     {
-        // TODO
-        qWarning() << "validator pending";
-#if 0
         Validator v(mdl);
         if( !v.validate(module) )
         {
             module->hasErrors = true;
             errors << v.errors;
         }
-#endif
     }
     done = module;
     module = 0;
@@ -355,15 +351,16 @@ Type* AstRenderer::derefType(const Quali& q)
 {
     if( q.second.isEmpty() )
         return 0;
+    // a declared type shadows a predeclared type name
+    Declaration* d = resolve(q, Declaration::TypeDecl);
+    if( d && d->getType() )
+        return d->getType();
     if( q.first.isEmpty() )
     {
         const quint8 k = AstModel::basicTypeKind(q.second);
         if( k != Type::Undefined )
             return mdl->getBasicType(k);
     }
-    Declaration* d = resolve(q, Declaration::TypeDecl);
-    if( d && d->getType() )
-        return d->getType();
     // not yet declared, or a stub; represent by a named reference and resolve later
     Type* ref = new Type();
     ref->kind = Type::NameRef;

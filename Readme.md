@@ -24,6 +24,11 @@ and I used the implementation for various experiments since, and now as the home
 There is a first version of the specification in the docs directory, and the infrastructure to generate it (using an equivalent design I implemented for 
 the Micron project). AIR is designed for reusability with (hopefully) all the features required for Oberon+, Luon, ActiveOberon and Simula 67.
 
+### Status on Sept. 25, 2026
+
+The AIR infrastructure is implemented. It's essentially a replica of the MIL emitter/renderer/AST/validator/serializer infrastructure. 
+In contrast to MIL there is no AIR lexer/parser; the AST is directly generated via AST renderer and the text rendering is just for debugging.
+Next an AIR to LuaJIT renderer will be implemented.
 
 ### Binary versions
 

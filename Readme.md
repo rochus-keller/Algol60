@@ -28,7 +28,13 @@ the Micron project). AIR is designed for reusability with (hopefully) all the fe
 
 The AIR infrastructure is implemented. It's essentially a replica of the MIL emitter/renderer/AST/validator/serializer infrastructure. 
 In contrast to MIL there is no AIR lexer/parser; the AST is directly generated via AST renderer and the text rendering is just for debugging.
-Next an AIR to LuaJIT renderer will be implemented.
+
+### Status on Oct. 1, 2026
+
+The AIR to LuaJIT renderer and an algol runtime written in Lua is implemented and there is a new compiler driver.
+Many of marst success work; also quite many of the other programs of the corpus work.
+The problem is that the standard doesn't include I/O features, which leads to incompatibilities
+I need to add more built-in I/O features to cover more programs (which e.g. miss "newline")
 
 ### Binary versions
 

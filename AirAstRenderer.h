@@ -30,7 +30,7 @@ namespace Air
     class AstRenderer : public AbstractRenderer
     {
     public:
-        AstRenderer(AstModel*, bool runValidator = false); // TODO: set to true when Validator is available
+        AstRenderer(AstModel*, bool runValidator = true);
         ~AstRenderer();
 
         void beginModule( const QByteArray& moduleName, const QString& sourceFile );

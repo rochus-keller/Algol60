@@ -6,8 +6,8 @@ HEADERS += \
     $$PWD/AirAstSerializer.h \
     $$PWD/AirEmitter.h \
     $$PWD/AirOps.h \
-    $$PWD/AirRenderer.h  \
-    $$PWD/AirValidator.h
+    $$PWD/AirRenderer.h \
+    $$PWD/AirValidator.h \
 
 SOURCES += \
     $$PWD/AirAst.cpp \
@@ -15,5 +15,5 @@ SOURCES += \
     $$PWD/AirAstSerializer.cpp \
     $$PWD/AirEmitter.cpp \
     $$PWD/AirOps.cpp \
-    $$PWD/AirRenderer.cpp  \
-    $$PWD/AirValidator.cpp
+    $$PWD/AirRenderer.cpp \
+    $$PWD/AirValidator.cpp \

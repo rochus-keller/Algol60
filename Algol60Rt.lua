@@ -12,12 +12,16 @@ function R.mkxfer(frame, label)
 end
 
 local lineLength = 80
+local pageLength = 0 -- zero means that the channel is not split into pages
+local delimiters = 1 -- the number of blanks separating data items
 local col = 0
+local line = 1
 
 local function put(s)
    if col > 0 and col + #s > lineLength then
       io.write("\n")
       col = 0
+      line = line + 1
    end
    io.write(s)
    col = col + #s
@@ -39,6 +43,7 @@ function R.outstring(ch, s)
       if c == "\n" then
          io.write("\n")
          col = 0
+         line = line + 1
       else
          io.write(c)
          col = col + 1
@@ -51,6 +56,7 @@ function R.outchar(ch, s, i)
    if c == "\n" then
       io.write("\n")
       col = 0
+      line = line + 1
    else
       io.write(c)
       col = col + 1
@@ -60,6 +66,66 @@ end
 function R.outterminator(ch)
    io.write("\n")
    col = 0
+   line = line + 1
+end
+
+function R.newline(ch)
+   io.write("\n")
+   col = 0
+   line = line + 1
+end
+
+function R.space(ch)
+   put(" ")
+end
+
+function R.tab(ch)
+   put("\t")
+end
+
+function R.random()
+   return math.random()
+end
+
+function R.outrealfmt(ch, x, width, decimals)
+   put(string.format("%" .. width .. "." .. decimals .. "f", x))
+end
+
+function R.outarray(ch, a, kind)
+   local d = a.data
+   for i = 0, d.n - 1 do
+      if kind == 0 then R.outinteger(ch, d[i])
+      elseif kind == 2 then put(d[i] and "true " or "false ")
+      else R.outreal(ch, d[i]) end
+   end
+end
+
+function R.sysact(ch, fn, q)
+   if fn == 1 then q.set(col + 1)
+   elseif fn == 2 then
+      local n = q.get() - 1 - col
+      if n > 0 then put(string.rep(" ", n)) else R.newline(ch) end
+   elseif fn == 3 or fn == 13 then q.set(line)
+   elseif fn == 4 then
+      for i = line, q.get() - 1 do R.newline(ch) end
+   elseif fn == 5 then q.set(lineLength)
+   elseif fn == 6 then lineLength = q.get()
+   elseif fn == 7 then q.set(pageLength)
+   elseif fn == 8 then pageLength = q.get()
+   elseif fn == 9 then q.set(delimiters)
+   elseif fn == 10 then delimiters = q.get()
+   elseif fn == 11 then q.set(1) -- a channel of this runtime is always open
+   elseif fn == 12 then -- opening and closing has no effect
+   elseif fn == 14 then
+      for i = 1, q.get() do R.newline(ch) end
+   elseif fn == 15 then
+      if pageLength > 0 then
+         while line % pageLength ~= 0 do R.newline(ch) end
+      end
+      for i = 1, q.get() do R.newline(ch) end
+   else
+      R.fault("sysact function not supported", fn)
+   end
 end
 
 local pending = ""
@@ -97,6 +163,16 @@ function R.inchar(ch, s, d)
    pending = pending:sub(2)
    local i = s:find(c, 1, true)
    d.set(i or 0)
+end
+
+function R.inarray(ch, a, kind)
+   local d = a.data
+   for i = 0, d.n - 1 do
+      local t = token()
+      if kind == 0 then d[i] = math.floor(tonumber(t) or 0)
+      elseif kind == 2 then d[i] = t == "true" or tonumber(t) == 1
+      else d[i] = tonumber(t) or 0.0 end
+   end
 end
 
 function R.sqrt(x) return math.sqrt(x) end
@@ -155,8 +231,6 @@ local function basename(path)
 end
 
 local function frame(i)
-   -- the Algol procedures of a module are the functions of its chunk
-   -- the runtime itself and the Lua dispatch helpers are not part of the Algol call chain
    if i.func == nil then return nil end
    local name = A.procname(i.func)
    if name == nil then return nil end -- not a procedure of a generated module

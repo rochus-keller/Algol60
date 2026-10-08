@@ -32,17 +32,46 @@ function A.castobj(obj, T)
    return obj
 end
 
-function A.newobj(proto, T)
-   -- creates an instance of a record or struct type
-   -- proto is a table with all fields set to their default value, T the record type or nil for a struct
+local ctors = setmetatable({}, { __mode = "k" })
+local function slowobj(proto, T)
    local o = {}
    for k, v in pairs(proto) do o[k] = v end
    if T ~= nil then setmetatable(o, T) end
    return o
 end
+local function mkctor(proto)
+   local parts = {}
+   for k, v in pairs(proto) do
+      local tv = type(v)
+      if type(k) ~= "string" then return slowobj end
+      if tv == "number" then
+         if v ~= v or v == math.huge or v == -math.huge then return slowobj end
+         parts[#parts+1] = string.format("[%q]=%.17g", k, v)
+      elseif tv == "boolean" then
+         parts[#parts+1] = string.format("[%q]=%s", k, tostring(v))
+      elseif tv == "string" then
+         parts[#parts+1] = string.format("[%q]=%q", k, v)
+      else
+         return slowobj
+      end
+   end
+   local src = "local sm = ... return function(T) local o = {" .. table.concat(parts, ",") ..
+      "} if T ~= nil then sm(o, T) end return o end"
+   local f = (loadstring or load)(src)
+   if f == nil then return slowobj end
+   return f(setmetatable)
+end
+function A.newobj(proto, T)
+   local c = ctors[proto]
+   if c == nil then
+      c = mkctor(proto)
+      ctors[proto] = c
+   end
+   if c == slowobj then return slowobj(proto, T) end
+   return c(T)
+end
 
 function A.desig(t, k)
-   -- a designator refers to the variable t[k]
    return { get = function() return t[k] end,
             set = function(v) t[k] = v end }
 end
@@ -117,11 +146,118 @@ end
 A.band, A.bor, A.bxor, A.bnot = band, bor, bxor, bnot
 A.shl, A.shr, A.shr_un = shl, shr, shr
 
--- the module tables of the loaded modules
 local modules = {}
 
-function A.regmod(m)
+function A.regmod(m, name)
    modules[#modules+1] = m
+   if name ~= nil then package.loaded[name] = m end
+end
+
+A.externs = {}
+A.externResolver = nil
+
+function A.extern(mod, name)
+   local t = A.externs[mod]
+   local f = t ~= nil and t[name] or nil
+   if f == nil and A.externResolver ~= nil then
+      f = A.externResolver(mod, name)
+   end
+   if f == nil then
+      error("cannot resolve the EXTERN procedure " .. mod .. "." .. name)
+   end
+   return f
+end
+
+local ffi = nil
+local clibs = {}
+local cdecls = {}
+
+local function clib(name)
+   if name == nil or name == "" then return ffi.C end
+   local l = clibs[name]
+   if l == nil then
+      local ok, res = pcall(ffi.load, name)
+      if not ok then
+         error("cannot load the library '" .. name .. "': " .. tostring(res))
+      end
+      l = res
+      clibs[name] = l
+   end
+   return l
+end
+
+function A.cproc(cdecl, lib, sym, desc)
+   if ffi == nil then
+      local ok, res = pcall(require, "ffi")
+      if not ok then
+         error("the FOREIGN procedure " .. sym .. " requires LuaJIT with the FFI")
+      end
+      ffi = res
+   end
+   if not cdecls[cdecl] then
+      local ok, err = pcall(ffi.cdef, cdecl)
+      if not ok then
+         error("cannot declare '" .. cdecl .. "': " .. tostring(err))
+      end
+      cdecls[cdecl] = true
+   end
+   local ok, f = pcall(function() return clib(lib)[sym] end)
+   if not ok or f == nil then
+      error("cannot resolve the C symbol '" .. sym .. "'" ..
+            (lib ~= nil and lib ~= "" and " in '" .. lib .. "'" or "") ..
+            (ok and "" or ": " .. tostring(f)))
+   end
+
+   local kinds, boxes, ret, n = {}, {}, nil, 0
+   for item in string.gmatch(desc, "[^;]+") do
+      if ret == nil then
+         ret = item
+      else
+         n = n + 1
+         local k, ct = string.match(item, "^(%a):(.+)$")
+         if k ~= nil then
+            kinds[n] = k
+            boxes[n] = ffi.typeof(ct .. "[1]")
+         else
+            kinds[n] = item
+         end
+      end
+   end
+
+   local plain = ( ret == "n" or ret == "v" )
+   for i = 1, n do
+      if kinds[i] ~= "n" and kinds[i] ~= "s" then plain = false end
+   end
+   if plain then return f end -- the FFI converts numbers and strings by itself
+
+   return function(...)
+      local a = { ... }
+      local out = nil
+      for i = 1, n do
+         local k = kinds[i]
+         if k == "P" then
+            local d = a[i]
+            local b = boxes[i]()
+            b[0] = d.get()
+            out = out or {}
+            out[#out+1] = { b, d }
+            a[i] = b
+         end
+      end
+      local res = f(unpack(a, 1, n))
+      if out ~= nil then
+         for i = 1, #out do
+            local o = out[i]
+            o[2].set(tonumber(o[1][0]))
+         end
+      end
+      if ret == "v" then return end
+      if ret == "s" then
+         if res == nil then return nil end
+         return ffi.string(res)
+      end
+      return tonumber(res)
+   end
 end
 
 function A.procname(f)
@@ -179,6 +315,11 @@ function A.transfer(t)
       dispatch(t)
    else
       coroutine.yield(t)
+   end
+   local e = current.pending
+   if e ~= nil then
+      current.pending = nil
+      error(e, 0)
    end
 end
 

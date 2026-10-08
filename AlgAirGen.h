@@ -93,7 +93,7 @@ namespace Alg
         void collectThunks(Frame*, Statement*);
         void collectThunks(Frame*, Expression*);
         void thunksOfCall(Frame*, Declaration* proc, Expression* args);
-        static Declaration* calleeOf(Declaration* proc); // the procedure a formal procedure stands for
+        static Declaration* calleeOf(Declaration* proc);
 
         // statements
         void statSeq(Statement*);
@@ -119,23 +119,23 @@ namespace Alg
         void subscript(Expression*, bool store);
         void call(Expression* call, Declaration* proc, Expression* args, Type* target);
         void builtin(Expression* call, Declaration* b, Expression* args);
+        void bound(Expression* call, Declaration* b, Expression* args);
         static bool builtinIsFunc(int id);
-        Expression* channel(Expression* args, int vals); // pushes the channel number
-        static QByteArray runtimeName(Declaration* builtin);
-        void store(Expression* lhs, Expression* rhs, int tmp = -1, Type* tmpType = 0,
-                   bool tmpIsArg = false);
+        Expression* channel(Expression* args, int vals);
+        static QByteArray rtArgs(const Builtin::Desc&);
+        void store(Expression* lhs, Expression* rhs, int tmp = -1, Type* tmpType = 0, bool tmpIsArg = false);
         void loadTmp(int tmp, bool isArg);
         int args(Declaration* proc, Expression* args, const Alg::RowCol&);
         void conv(Type* from, Type* to);
-        void arrayRef(Expression* subscript); // pushes the data array and the linear index
-        void descriptor(Declaration* array); // pushes the descriptor pointer
+        void arrayRef(Expression* subscript);
+        void descriptor(Declaration* array);
 
         // designational expressions
-        void designator(Expression*);  // emits the goto
-        void transfer(Expression*);  // pushes a Transfer instance
+        void designator(Expression*);
+        void transfer(Expression*);
         void jump(Declaration* label);
-        void formalLabel(Declaration*); // pushes the Transfer instance of a formal label
-        void thunkRef(Expression* actual); // pushes the methref of the thunk of an actual
+        void formalLabel(Declaration*);
+        void thunkRef(Expression* actual);
 
         // helpers
         void framePtr(Frame*);
@@ -146,7 +146,7 @@ namespace Alg
         Air::Quali typeRef(Type*, Declaration* d = 0);
         QByteArray descName(Type* elem, int dims);
         QByteArray arrName(Type* elem);
-        static bool isDesignator(Expression*); // a variable or subscripted variable
+        static bool isDesignator(Expression*);
         static QByteArray basicName(Type*);
         static Air::EmiTypes::Basic basicType(Type*);
         QByteArray unique(const QByteArray& name);

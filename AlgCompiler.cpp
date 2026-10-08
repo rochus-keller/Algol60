@@ -198,7 +198,7 @@ int main(int argc, char *argv[])
 {
     QCoreApplication a(argc, argv);
     a.setApplicationName("algc");
-    a.setApplicationVersion("2026-10-01");
+    a.setApplicationVersion("2026-10-08");
 
     QTextStream out(stdout);
 

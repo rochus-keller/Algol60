@@ -36,6 +36,16 @@ Many of marst success work; also quite many of the other programs of the corpus 
 The problem is that the standard doesn't include I/O features, which leads to incompatibilities
 I need to add more built-in I/O features to cover more programs (which e.g. miss "newline")
 
+### Status on Oct. 8, 2026
+
+Refactored built-in approach so the can be registered and used dynamically. Added built-ins via runtime to cover 
+a larger part of the corpus. Also added support for FFI generation of foreign procs to call C from libraries;
+the argument types are limited to basic and string types; the generated chunk passes the C declaration derived from the AIR signature.
+A performance improvement when creating records and initializing fields; a prototype is created once when its module is initialized
+and must not be the first instantiation compiles a constructor which has the default values built in.
+The compiler and integrated VM seem to have reached MVP status: of the 195 files in the corpus (Katwijk-algol-60,
+marst, swornimgrg-algol60) 164 run; the ones that don't work are from racket-algol60 and all of the marst intended errors.
+
 ### Binary versions
 
 Not yet available.

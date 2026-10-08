@@ -396,6 +396,130 @@ public:
             fetchDecl(to, t->decl, p);
     }
 
+    static QByteArray cType(Type* t)
+    {
+        if( t == 0 )
+            return "void";
+        t = t->deref();
+        if( t == 0 )
+            return QByteArray();
+        switch( t->kind ) {
+        case Type::BOOL:
+            return "int"; // a boolean is zero or one in this backend
+        case Type::CHAR:
+        case Type::INT8:
+            return "int8_t";
+        case Type::INT16:
+            return "int16_t";
+        case Type::INT32:
+            return "int32_t";
+        case Type::INT64:
+            return "int64_t";
+        case Type::UINT8:
+            return "uint8_t";
+        case Type::UINT16:
+            return "uint16_t";
+        case Type::UINT32:
+            return "uint32_t";
+        case Type::UINT64:
+            return "uint64_t";
+        case Type::FLOAT32:
+            return "float";
+        case Type::FLOAT64:
+            return "double";
+        case Type::Pointer:
+            {
+                // POINTER TO ARRAY OF CHAR is a string, which the FFI converts
+                Type* to = t->getType() ? t->getType()->deref() : 0;
+                if( to && to->kind == Type::Array && to->getType() &&
+                        to->getType()->deref() && to->getType()->deref()->kind == Type::CHAR )
+                    return "const char*";
+                return QByteArray();
+            }
+        case Type::CPointer:
+            return "void*";
+        default:
+            return QByteArray();
+        }
+    }
+
+    static char cKind(Type* t, bool varParam)
+    {
+        // how the wrapper converts an argument or the result
+        if( t == 0 )
+            return 'v';
+        Type* d = t->deref();
+        if( d == 0 )
+            return 0;
+        if( d->kind == Type::Pointer )
+            return varParam ? 0 : 's'; // a string cannot be written back
+        if( d->isNumber() || d->kind == Type::CHAR || d->kind == Type::BOOL )
+            return varParam ? 'P' : 'n';
+        return 0;
+    }
+
+    void emitForeignBinding(Declaration* proc)
+    {
+        const QByteArray binding = proc->pd && !proc->pd->externalName.isEmpty() ?
+                    proc->pd->externalName : proc->name;
+        // the external name is the symbol, optionally prefixed by the library it is in
+        const int colon = binding.indexOf(':');
+        const QByteArray lib = colon < 0 ? QByteArray() : binding.left(colon);
+        const QByteArray sym = colon < 0 ? binding : binding.mid(colon+1);
+
+        const QByteArray res = cType(proc->getType());
+        QByteArray cdecl_ = res + " " + sym + "(";
+        QByteArray desc;
+        bool ok = !res.isEmpty();
+
+        const char rk = proc->getType() == 0 ? 'v' : cKind(proc->getType(), false);
+        if( rk == 0 )
+            ok = false;
+        desc += rk;
+
+        const DeclList params = proc->getParams();
+        for( int i = 0; i < params.size(); i++ )
+        {
+            Type* t = params[i]->getType();
+            QByteArray ct = cType(t);
+            const char k = cKind(t, params[i]->varParam);
+            if( ct.isEmpty() || ct == "void" || k == 0 )
+            {
+                ok = false;
+                break;
+            }
+            if( i > 0 )
+                cdecl_ += ", ";
+            if( params[i]->varParam )
+            {
+                cdecl_ += ct + "*";
+                desc += QByteArray(";") + k + ":" + ct;
+            }else
+            {
+                cdecl_ += ct;
+                desc += QByteArray(";") + k;
+            }
+            cdecl_ += " " + params[i]->name;
+        }
+        cdecl_ += ");";
+
+        if( !ok )
+        {
+            error(QString("the signature of the FOREIGN procedure '%1' cannot be mapped to C").
+                  arg(proc->name.constData()), proc->pos);
+            return;
+        }
+
+        const int cfs = bc.getCallFrameSize();
+        const int base = beginRtCall("cproc", 4, proc->pos);
+        bc.KSET(base + cfs, cdecl_, pos(proc->pos));
+        bc.KSET(base + cfs + 1, lib, pos(proc->pos));
+        bc.KSET(base + cfs + 2, sym, pos(proc->pos));
+        bc.KSET(base + cfs + 3, desc, pos(proc->pos));
+        bc.CALL(base, 1, 4, pos(proc->pos));
+        setField(base, modSlot, keyOf(proc), proc->pos);
+        ctx.back().sellSlots(base, cfs + 4);
+    }
 
     // buys the call frame and puts A.<fn> into its base
     int beginRtCall(const QByteArray& fn, int nargs, const RowCol& p)
@@ -517,10 +641,11 @@ public:
         // the runtime finds the name of a procedure in the module table
         {
             const int cfs = bc.getCallFrameSize();
-            const int base = beginRtCall("regmod", 1, m->pos);
+            const int base = beginRtCall("regmod", 2, m->pos);
             bc.MOV(base + cfs, modSlot, pos(m->pos));
-            bc.CALL(base, 0, 1, pos(m->pos));
-            ctx.back().sellSlots(base, cfs + 1);
+            bc.KSET(base + cfs + 1, sanitize(m->name), pos(m->pos));
+            bc.CALL(base, 0, 2, pos(m->pos));
+            ctx.back().sellSlots(base, cfs + 2);
         }
 
         Declaration* sub = m->subs;
@@ -534,6 +659,25 @@ public:
                 emitRequire(slot, sanitize(sub->name), sub->pos);
             }
             sub = sub->next;
+        }
+
+        for( sub = m->subs; sub; sub = sub->next )
+            if( sub->kind == Declaration::Procedure && sub->extern_ )
+            {
+                const int cfs = bc.getCallFrameSize();
+                const int base = beginRtCall("extern", 2, sub->pos);
+                bc.KSET(base + cfs, m->name, pos(sub->pos));
+                bc.KSET(base + cfs + 1, sub->pd && !sub->pd->externalName.isEmpty() ?
+                            sub->pd->externalName : sub->name, pos(sub->pos));
+                bc.CALL(base, 1, 2, pos(sub->pos));
+                setField(base, modSlot, keyOf(sub), sub->pos);
+                ctx.back().sellSlots(base, cfs + 2);
+            }
+
+        for( sub = m->subs; sub; sub = sub->next )
+        {
+            if( sub->kind == Declaration::Procedure && sub->foreign_ )
+                emitForeignBinding(sub);
         }
 
         for( sub = m->subs; sub; sub = sub->next )
@@ -720,18 +864,24 @@ public:
             const quint8 slot = ctx.back().buySlots(1);
             argSlots << slot;
             names[slot] = sanitize(params[i]->name);
-            // a VAR parameter is a designator already and is forwarded as it is
-            if( isBoxed(quint32(i), true) )
-                emitBox(slot, true, params[i]->pos);
         }
         for( int i = 0; i < locals.size(); i++ )
         {
             const quint8 slot = ctx.back().buySlots(1);
             localSlots << slot;
             names[slot] = sanitize(locals[i]->name);
-            emitInitializer(slot, locals[i]->getType(), locals[i]->pos);
+        }
+        for( int i = 0; i < params.size(); i++ )
+        {
+            // a VAR parameter is a designator already and is forwarded as it is
+            if( isBoxed(quint32(i), true) )
+                emitBox(argSlots[i], true, params[i]->pos);
+        }
+        for( int i = 0; i < locals.size(); i++ )
+        {
+            emitInitializer(localSlots[i], locals[i]->getType(), locals[i]->pos);
             if( boxedLocals.contains(quint32(i)) )
-                emitBox(slot, true, locals[i]->pos);
+                emitBox(localSlots[i], true, locals[i]->pos);
         }
 
         statementSeq(p->body);

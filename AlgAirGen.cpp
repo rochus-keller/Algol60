@@ -1973,131 +1973,150 @@ int AirGen::args(Declaration* proc, Expression* actuals, const Alg::RowCol& pos)
 
 bool AirGen::builtinIsFunc(int id)
 {
-    switch( id )
-    {
-    case Builtin::ABS:
-    case Builtin::IABS:
-    case Builtin::SIGN:
-    case Builtin::SQRT:
-    case Builtin::SIN:
-    case Builtin::COS:
-    case Builtin::ARCTAN:
-    case Builtin::LN:
-    case Builtin::EXP:
-    case Builtin::ENTIER:
-    case Builtin::LENGTH:
-    case Builtin::MAXREAL:
-    case Builtin::MINREAL:
-    case Builtin::MAXINT:
-    case Builtin::EPSILON:
-        return true;
-    }
-    return false;
+    return Builtin::at(id).res != 0;
 }
 
 void AirGen::builtin(Expression* ex, Declaration* b, Expression* actuals)
 {
     Type* real = mdl->getType(Type::Real);
     Type* integer = mdl->getType(Type::Integer);
+    const Alg::RowCol pos = ex ? ex->pos : ( actuals ? actuals->pos : Alg::RowCol() );
+    const Builtin::Desc& d = Builtin::at(b->id);
 
-    switch( b->id )
+    if( d.special == Builtin::Abs )
     {
-    case Builtin::ABS:
-    case Builtin::IABS:
         expr(actuals, b->id == Builtin::IABS ? integer :
+                      b->id == Builtin::FABS ? real :
                       ( actuals ? actuals->getType() : real ));
         e->abs_();
         return;
-    case Builtin::SIGN:
-        expr(actuals, real);
-        e->call_(rt("sign"), 1, true);
-        return;
-    case Builtin::ENTIER:
-        expr(actuals, real);
-        e->call_(rt("entier"), 1, true);
-        return;
-    case Builtin::SQRT:
-    case Builtin::SIN:
-    case Builtin::COS:
-    case Builtin::ARCTAN:
-    case Builtin::LN:
-    case Builtin::EXP:
-        expr(actuals, real);
-        e->call_(rt(QByteArray(Builtin::name[b->id]).toLower()), 1, true);
-        return;
-    case Builtin::LENGTH:
-        expr(actuals, 0);
-        e->call_(rt("length"), 1, true);
-        return;
-    case Builtin::STOP:
-        e->call_(rt("stop"), 0);
-        return;
-    case Builtin::MAXREAL:
-    case Builtin::MINREAL:
-    case Builtin::EPSILON:
-        e->call_(rt(QByteArray(Builtin::name[b->id]).toLower()), 0, true);
-        return;
-    case Builtin::MAXINT:
-        e->call_(rt("maxint"), 0, true);
-        return;
-    case Builtin::FAULT:
-        expr(actuals, 0);
-        expr(actuals ? actuals->next : 0, real);
-        e->call_(rt("fault"), 2);
-        return;
-    case Builtin::OUTTERMINATOR:
-        channel(actuals, 0);
-        e->call_(rt("outterminator"), 1);
-        return;
-    case Builtin::OUTINTEGER:
-    case Builtin::OUTREAL:
-    case Builtin::OUTSTRING:
-    case Builtin::OUTCHAR:
-    case Builtin::OUTSYMBOL:
-        {
-            const int vals = ( b->id == Builtin::OUTCHAR ||
-                               b->id == Builtin::OUTSYMBOL ) ? 2 : 1;
-            Expression* a = channel(actuals, vals);
-            for( int i = 0; i < vals && a; i++, a = a->next ) {
-                Type* t = 0;
-                if( b->id == Builtin::OUTINTEGER || ( i == 1 ) )
-                    t = integer;
-                else if( b->id == Builtin::OUTREAL )
-                    t = real;
-                expr(a, t);
-            }
-            e->call_(rt(runtimeName(b)), vals + 1);
-        }
-        return;
-    case Builtin::ININTEGER:
-    case Builtin::INREAL:
-    case Builtin::INCHAR:
-    case Builtin::INSYMBOL:
-        {
-            // the value is read into a temporary and then assigned to the actual
-            const bool isChar = b->id == Builtin::INCHAR || b->id == Builtin::INSYMBOL;
-            Type* t = b->id == Builtin::INREAL ? real : integer;
-            const int tmp = e->addLocal(typeRef(t), tmpName(),
-                                        actuals ? air(actuals->pos) : Alg::RowCol());
-            Expression* a = channel(actuals, isChar ? 2 : 1);
-            if( isChar && a ) {
-                expr(a, 0); // the string of characters to be recognized
-                a = a->next;
-            }
-            Expression* var = a;
-            e->refloc_(tmp);
-            e->call_(rt(runtimeName(b)), isChar ? 3 : 2);
-            if( var )
-                store(var, 0, tmp, t);
-            else
-                error(ex ? air(ex->pos) : Alg::RowCol(),
-                      "the variable receiving the input value is missing");
-        }
-        return;
-    default:
-        error(ex ? air(ex->pos) : Alg::RowCol(), "this standard procedure is not yet supported");
+    }
+    if( d.special == Builtin::Bound )
+    {
+        bound(ex, b, actuals);
         return;
     }
+    if( d.rt == 0 )
+    {
+        error(air(pos), "this standard procedure is not yet supported");
+        return;
+    }
+
+    Expression* a = actuals;
+    int argc = 0, tmp = -1;
+    Type* tmpType = 0;
+    for( const char* p = d.args; *p; p++ )
+    {
+        const char kind = *p;
+        const bool optional = p[1] == '?';
+        if( optional )
+            p++;
+        switch( kind )
+        {
+        case 'c':
+            a = channel(a, Builtin::minArgs(d));
+            argc++;
+            break;
+        case 'i':
+        case 'f':
+        case 's':
+            if( a == 0 )
+            {
+                // a value which was left out, e.g. the second actual of fault
+                if( kind == 's' )
+                    e->ldstr_("");
+                else if( kind == 'f' )
+                    e->ldc_r8(0.0);
+                else
+                    e->ldc_i4(0);
+            }else
+            {
+                expr(a, kind == 'i' ? integer : kind == 'f' ? real : 0);
+                a = a->next;
+            }
+            argc++;
+            break;
+        case 'a':
+            {
+                Type* et = 0;
+                if( a && a->kind == Expression::DeclRef && isArray(a->d) )
+                {
+                    descriptor(a->d);
+                    et = a->d->getType() ? a->d->getType()->getType() : 0;
+                }else
+                {
+                    error(air(pos), "an array is required here");
+                    e->ldnull_();
+                }
+                e->ldc_i4( et == 0 ? 1 : et->kind == Type::Integer ? 0 :
+                                         et->kind == Type::Boolean ? 2 : 1 );
+                if( a )
+                    a = a->next;
+                argc += 2;
+            }
+            break;
+        case 'I':
+        case 'F':
+        case 'V':
+            tmpType = kind == 'F' ? real : integer;
+            tmp = e->addLocal(typeRef(tmpType), tmpName(), air(pos));
+            if( kind == 'V' && a )
+            {
+                expr(a, tmpType);
+                e->stloc_(tmp);
+            }
+            e->refloc_(tmp);
+            argc++;
+            break;
+        }
+    }
+
+    if( d.special == Builtin::RealFmt )
+    {
+        const QList<QByteArray> parts = b->name.toLower().
+                mid(::strlen(Builtin::at(Builtin::OUTREALFMT).name)).split('_');
+        e->ldc_i4(parts.size() == 2 ? parts[0].toInt() : 0);
+        e->ldc_i4(parts.size() == 2 ? parts[1].toInt() : 0);
+        argc += 2;
+    }
+
+    e->call_(rt(d.rt), argc, d.res != 0);
+
+    if( tmp >= 0 )
+    {
+        if( a && isDesignator(a) )
+            store(a, 0, tmp, tmpType);
+        else if( d.special == Builtin::InVar )
+            error(air(pos), "the variable receiving the input value is missing");
+    }
+}
+
+void AirGen::bound(Expression* ex, Declaration* b, Expression* actuals)
+{
+    const Alg::RowCol pos = ex ? ex->pos : ( actuals ? actuals->pos : Alg::RowCol() );
+    Declaration* d = actuals && actuals->kind == Expression::DeclRef ? actuals->d : 0;
+    if( d == 0 || !isArray(d) )
+    {
+        error(air(pos), "an array is required here");
+        e->ldc_i4(0);
+        return;
+    }
+    int k = 1;
+    if( actuals->next && actuals->next->kind == Expression::UnsignedConst )
+        k = int(actuals->next->u);
+    Type* t = d->getType();
+    const int dims = d->isParam ? dimsOfFormal.value(d,1) : t->getDims();
+    if( k < 1 || k > dims )
+    {
+        error(air(pos), "the dimension is out of range");
+        e->ldc_i4(0);
+        return;
+    }
+    const bool upper = b->id == Builtin::I_UPB || b->id == Builtin::R_UPB ||
+                       b->id == Builtin::B_UPB;
+    const QByteArray dn = descName(t->getType(), dims);
+    descriptor(d);
+    e->ldfld_(Trident(q(dn), ( upper ? "ub" : "lb" ) + QByteArray::number(k)));
 }
 
 Expression* AirGen::channel(Expression* actuals, int vals)
@@ -2115,19 +2134,6 @@ Expression* AirGen::channel(Expression* actuals, int vals)
     }
     e->call_(rt("stdchannel"), 0, true);
     return actuals;
-}
-
-QByteArray AirGen::runtimeName(Declaration* b)
-{
-    switch( b->id )
-    {
-    case Builtin::INSYMBOL:
-        return "inchar";
-    case Builtin::OUTSYMBOL:
-        return "outchar";
-    default:
-        return QByteArray(Builtin::name[b->id]).toLower();
-    }
 }
 
 QByteArray AirGen::sanitize(const QByteArray& name)
@@ -2232,6 +2238,34 @@ void AirGen::error(const Alg::RowCol& pos, const QString& msg)
     errors << Error(msg, pos, sourcePath);
 }
 
+QByteArray AirGen::rtArgs(const Builtin::Desc& d)
+{
+    // the channel is an integer, an array is passed as its descriptor record
+    QByteArray res;
+    for( const char* a = d.args; *a; a++ )
+    {
+        switch( *a )
+        {
+        case 'c':
+            res += 'i';
+            break;
+        case 'a':
+            res += "ri"; // the descriptor and the type of its elements
+            break;
+        case 'V':
+            res += 'I'; // an integer variable
+            break;
+        case '?':
+        case 'd':
+            break;
+        default:
+            res += *a;
+            break;
+        }
+    }
+    return res;
+}
+
 void AirGen::generateRuntime(AbstractRenderer* out)
 {
     // the interface of the Algol 60 runtime; the implementation is provided by the backend
@@ -2251,42 +2285,44 @@ void AirGen::generateRuntime(AbstractRenderer* out)
     struct Fn { const char* name; const char* args; const char* ret; };
     static const Fn fn[] =
     {
-        { "sqrt", "f", "f" },
-        { "sin", "f", "f" },
-        { "cos", "f", "f" },
-        { "arctan", "f", "f" },
-        { "ln", "f", "f" },
-        { "exp", "f", "f" },
-        { "entier", "f", "i" },
-        { "sign", "f", "i" },
         { "round", "f", "i" },
         { "expr", "ff", "f" },
         { "expn", "fi", "f" },
         { "expi", "ii", "i" },
-        { "maxreal", "", "f" },
-        { "minreal", "", "f" },
-        { "epsilon", "", "f" },
-        { "maxint", "", "i" },
-        { "length", "s", "i" },
         { "stdchannel", "", "i" },
-        { "outinteger", "ii", "" },
-        { "outreal", "if", "" },
-        { "outstring", "is", "" },
-        { "outchar", "isi", "" },
-        { "outterminator", "i", "" },
-        { "ininteger", "iI", "" },
-        { "inreal", "iF", "" },
-        { "inchar", "isI", "" },
-        { "stop", "", "" },
-        { "fault", "sf", "" },
         { "faultmsg", "s", "" },
         { "mkxfer", "ri", "x" },
+        { "outrealfmt", "ifii", "" },
         { 0, 0, 0 }
     };
+
+    QList<Fn> all;
     for( int i = 0; fn[i].name; i++ )
+        all << fn[i];
+    QList<QByteArray> args; // the argument strings of the generated rows, owned by this list
+    for( int i = 0; i < Builtin::Max; i++ )
     {
-        e.beginProc(fn[i].name, pos, true, ProcData::Extern, QByteArray("algol60_") + fn[i].name);
-        const QByteArray a = fn[i].args;
+        const Builtin::Desc& d = Builtin::desc[i];
+        if( d.rt == 0 || d.special == Builtin::RealFmt )
+            continue; // generated inline, or already in the table above
+        bool exists = false;
+        for( int k = 0; k < all.size(); k++ )
+            if( all[k].name == QByteArray(d.rt) )
+                exists = true;
+        if( exists )
+            continue; // several builtins may share a runtime procedure, e.g. outsymbol
+        args << rtArgs(d);
+        Fn f;
+        f.name = d.rt;
+        f.args = args.back().constData();
+        f.ret = d.res == 'f' ? "f" : d.res == 'i' ? "i" : "";
+        all << f;
+    }
+
+    for( int i = 0; i < all.size(); i++ )
+    {
+        e.beginProc(all[i].name, pos, true, ProcData::Extern, QByteArray("algol60_") + all[i].name);
+        const QByteArray a = all[i].args;
         for( int k = 0; k < a.size(); k++ )
         {
             switch( a[k] ) {
@@ -2310,7 +2346,7 @@ void AirGen::generateRuntime(AbstractRenderer* out)
                 break;
             }
         }
-        const QByteArray r = fn[i].ret;
+        const QByteArray r = all[i].ret;
         if( r == "f" )
             e.setReturnType(q("float64"));
         else if( r == "i" )

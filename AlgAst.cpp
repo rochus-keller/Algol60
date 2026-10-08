@@ -23,14 +23,106 @@
 #include <Algol60/AlgLexer.h>
 #include <QTextStream>
 #include <QtDebug>
+#include <string.h>
 using namespace Alg;
 
-const char* Builtin::name[] = {
-    "ABS", "SIGN", "SQRT", "SIN", "COS", "ARCTAN", "LN", "EXP", "ENTIER",
-    "IABS", "ININTEGER", "OUTINTEGER", "INREAL", "OUTREAL", "INCHAR", "OUTCHAR",
-    "INSYMBOL", "OUTSYMBOL", "OUTSTRING", "OUTTERMINATOR", "LENGTH", "STOP", "FAULT",
-    "MAXREAL", "MINREAL", "MAXINT", "EPSILON"
+enum Group {
+    Report, // standard functions of Revised Report 3.2.4
+    Modified, // environmental block of Modified Report 5
+    Prelude // found in the prelude of common implementations
 };
+
+const Builtin::Desc Builtin::desc[] = {
+    /* characters of args:
+       c  the channel, which may be left out, in which case the standard channel is used
+       i  integer value     f  real value     s  string     a  array
+       I  integer variable  F  real variable  d  dimension of an array
+       V  integer variable transmitted in both directions (sysact)
+       a formal followed by '?' may be left out
+
+       characters of res: 0 none, 'i' integer, 'f' real
+    */
+
+    // name            args    res  runtime          group     special
+    { "abs",           "f",    'f', 0,               Report,   Abs },
+    { "sign",          "f",    'i', "sign",          Report,   Plain },
+    { "sqrt",          "f",    'f', "sqrt",          Report,   Plain },
+    { "sin",           "f",    'f', "sin",           Report,   Plain },
+    { "cos",           "f",    'f', "cos",           Report,   Plain },
+    { "arctan",        "f",    'f', "arctan",        Report,   Plain },
+    { "ln",            "f",    'f', "ln",            Report,   Plain },
+    { "exp",           "f",    'f', "exp",           Report,   Plain },
+    { "entier",        "f",    'i', "entier",        Report,   Plain },
+    { "iabs",          "i",    'i', 0,               Modified, Abs },
+    { "ininteger",     "cI",   0,   "ininteger",     Modified, InVar },
+    { "outinteger",    "ci",   0,   "outinteger",    Modified, Plain },
+    { "inreal",        "cF",   0,   "inreal",        Modified, InVar },
+    { "outreal",       "cf",   0,   "outreal",       Modified, Plain },
+    { "inchar",        "csI",  0,   "inchar",        Modified, InVar },
+    { "outchar",       "csi",  0,   "outchar",       Modified, Plain },
+    { "insymbol",      "csI",  0,   "inchar",        Modified, InVar },
+    { "outsymbol",     "csi",  0,   "outchar",       Modified, Plain },
+    { "outstring",     "cs",   0,   "outstring",     Modified, Plain },
+    { "outterminator", "c",    0,   "outterminator", Modified, Plain },
+    { "length",        "s",    'i', "length",        Modified, Plain },
+    { "stop",          "",     0,   "stop",          Modified, Plain },
+    { "fault",         "sf",   0,   "fault",         Modified, Plain },
+    { "maxreal",       "",     'f', "maxreal",       Modified, Plain },
+    { "minreal",       "",     'f', "minreal",       Modified, Plain },
+    { "maxint",        "",     'i', "maxint",        Modified, Plain },
+    { "epsilon",       "",     'f', "epsilon",       Modified, Plain },
+    { "inarray",       "ca",   0,   "inarray",       Modified, Plain },
+    { "outarray",      "ca",   0,   "outarray",      Modified, Plain },
+    { "sysact",        "ciV",  0,   "sysact",        Modified, Plain },
+    { "newline",       "c",    0,   "newline",       Prelude,  Plain },
+    { "space",         "c",    0,   "space",         Prelude,  Plain },
+    { "tab",           "c",    0,   "tab",           Prelude,  Plain },
+    { "fabs",          "f",    'f', 0,               Prelude,  Abs },
+    { "random",        "",     'f', "random",        Prelude,  Plain },
+    { "i_lwb",         "ad?",  'i', 0,               Prelude,  Bound },
+    { "i_upb",         "ad?",  'i', 0,               Prelude,  Bound },
+    { "r_lwb",         "ad?",  'i', 0,               Prelude,  Bound },
+    { "r_upb",         "ad?",  'i', 0,               Prelude,  Bound },
+    { "b_lwb",         "ad?",  'i', 0,               Prelude,  Bound },
+    { "b_upb",         "ad?",  'i', 0,               Prelude,  Bound },
+    { "outreal_",      "cf",   0,   "outrealfmt",    Prelude,  RealFmt },
+};
+
+const Builtin::Desc& Builtin::at(int kind)
+{
+    Q_ASSERT( kind >= 0 && kind < Max );
+    return desc[kind];
+}
+
+int Builtin::find(const QByteArray& lowerName)
+{
+    for( int i = 0; i < Max; i++ )
+        if( lowerName == desc[i].name )
+            return i;
+    return Max;
+}
+
+int Builtin::minArgs(const Desc& d)
+{
+    // the channel may be left out, and so may a formal marked with '?'
+    int res = 0;
+    for( const char* a = d.args; *a; a++ ) {
+        if( a[1] == '?' )
+            continue;
+        if( *a != 'c' && *a != '?' )
+            res++;
+    }
+    return res;
+}
+
+int Builtin::maxArgs(const Desc& d)
+{
+    int res = 0;
+    for( const char* a = d.args; *a; a++ )
+        if( *a != '?' )
+            res++;
+    return res;
+}
 
 const char* Type::name[] = {
     "Undefined", "NoType",
@@ -415,11 +507,47 @@ Type* AstModel::newType(Type::Kind k)
 void AstModel::initBuiltins()
 {
     for( int i = 0; i < Builtin::Max; i++ ) {
-        const QByteArray name = Builtin::name[i];
-        Declaration* d = addDecl(Lexer::toId(name.toLower()), name, Declaration::Builtin);
-        d->id = i;
-        d->validated = true;
+        if( Builtin::desc[i].special == Builtin::RealFmt )
+            continue; // a name family, declared when first used
+        addBuiltin(i, Builtin::desc[i].name);
+        Q_ASSERT( Builtin::find(Builtin::desc[i].name) == i );
     }
+}
+
+Declaration* AstModel::addBuiltin(int kind, const QByteArray& name)
+{
+    // a builtin always belongs to the global scope
+    Declaration* d = new Declaration(Declaration::Builtin);
+    d->name = name;
+    d->sym = Lexer::toId(name);
+    d->outer = globalScope;
+    globalScope->appendMember(d);
+    d->id = kind;
+    d->validated = true;
+    return d;
+}
+
+Declaration* AstModel::findBuiltinFamily(const QByteArray& name)
+{
+    // outreal_<width>_<decimals> of the jff prelude; the format is part of the identifier
+    const QByteArray lower = name.toLower();
+    const Builtin::Desc& d = Builtin::at(Builtin::OUTREALFMT);
+    if( !lower.startsWith(d.name) || lower.size() == int(::strlen(d.name)) )
+        return 0;
+    const QList<QByteArray> parts = lower.mid(::strlen(d.name)).split('_');
+    if( parts.size() != 2 )
+        return 0;
+    bool ok1, ok2;
+    parts[0].toUInt(&ok1);
+    parts[1].toUInt(&ok2);
+    if( !ok1 || !ok2 )
+        return 0;
+
+    Declaration* res = findInScope(globalScope, Lexer::toId(lower));
+    if( res )
+        return res;
+
+    return addBuiltin(Builtin::OUTREALFMT, lower);
 }
 
 void AstModel::initGlobals()

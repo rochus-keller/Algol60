@@ -48,9 +48,37 @@ namespace Alg
             IABS, ININTEGER, OUTINTEGER, INREAL, OUTREAL, INCHAR, OUTCHAR,
             INSYMBOL, OUTSYMBOL, OUTSTRING, OUTTERMINATOR, LENGTH, STOP, FAULT,
             MAXREAL, MINREAL, MAXINT, EPSILON,
+            INARRAY, OUTARRAY, SYSACT,
+            // procedures which the prelude of most implementations adds to the environment
+            NEWLINE, SPACE, TAB, FABS, RANDOM,
+            I_LWB, I_UPB, R_LWB, R_UPB, B_LWB, B_UPB,
+            OUTREALFMT, // the outreal_<width>_<decimals> family
             Max
         };
-        static const char* name[];
+
+        enum Special {
+            Plain, // actuals as declared
+            Abs, // result type depends on the actual
+            InVar, // last actual is a variable receiving the result
+            Bound, // bound of an array desc
+            RealFmt // outreal, format in name
+        };
+
+        struct Desc
+        {
+            const char* name;
+            const char* args;
+            char res;
+            const char* rt;   // Algol60Rt name or zero for inline
+            quint8 group;
+            quint8 special;
+        };
+
+        static const Desc desc[];
+        static const Desc& at(int kind);
+        static int find(const QByteArray& lowerName); // Kind or Max
+        static int minArgs(const Desc&);
+        static int maxArgs(const Desc&);
     };
 
     class Node
@@ -271,6 +299,8 @@ namespace Alg
 
         static Declaration* findInScope(Declaration* scope, const char* sym);
 
+        Declaration* findBuiltinFamily(const QByteArray& name);
+
         static void dump(QTextStream&, Declaration*);
     private:
         AstModel& operator=(const AstModel& rhs);
@@ -279,6 +309,7 @@ namespace Alg
         void clearGlobals();
         Type* newType(Type::Kind k);
         void initBuiltins();
+        Declaration* addBuiltin(int kind, const QByteArray& name);
         AlgolVersion version;
         QList<Declaration*> scopes;
         Declaration* globalScope;

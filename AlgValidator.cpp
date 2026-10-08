@@ -25,7 +25,7 @@ using namespace Alg;
 enum Use { Use_none = 0, Use_subscript = 1, Use_call = 2, Use_assign = 4, Use_goto = 8,
            Use_arith = 16, Use_bool = 32, Use_actual = 64 };
 
-Validator::Validator(AstModel* mdl):mdl(mdl),module(0)
+Validator::Validator(AstModel* mdl):mdl(mdl),module(0),inCallee(false)
 {
 }
 
@@ -424,7 +424,10 @@ void Validator::CallStat(Statement* s)
         return;
 
     // a procedure statement is represented as a Call statement, even without actual parameters
-    if( !Expr(s->lhs) )
+    inCallee = s->rhs != 0;
+    const bool ok = Expr(s->lhs);
+    inCallee = false;
+    if( !ok )
         return;
     if( s->lhs->kind != Expression::DeclRef )
         return error(s->pos, "invalid procedure statement");
@@ -645,20 +648,7 @@ bool Validator::Identifier(Expression* e)
         e->setType(d->getType());
         break;
     case Declaration::Builtin:
-        switch( d->id )
-        {
-        case Builtin::MAXREAL:
-        case Builtin::MINREAL:
-        case Builtin::EPSILON:
-            e->setType(mdl->getType(Type::Real));
-            break;
-        case Builtin::MAXINT:
-            e->setType(mdl->getType(Type::Integer));
-            break;
-        default:
-            BuiltinCall(e, d, 0, e->pos, false);
-            break;
-        }
+        BuiltinCall(e, d, 0, e->pos, !inCallee && Builtin::minArgs(Builtin::at(d->id)) > 0);
         break;
     default:
         return error(e->pos, QString("cannot use '%1' in an expression").arg(d->name.constData())), false;
@@ -703,7 +693,12 @@ bool Validator::SubscriptExpr(Expression* e)
 
 bool Validator::CallExpr(Expression* e)
 {
-    if( e->lhs == 0 || !Expr(e->lhs) )
+    if( e->lhs == 0 )
+        return false;
+    inCallee = e->rhs != 0;
+    const bool ok = Expr(e->lhs);
+    inCallee = false;
+    if( !ok )
         return false;
     if( e->lhs->kind != Expression::DeclRef )
         return error(e->pos, "invalid function designator"), false;
@@ -1076,84 +1071,29 @@ void Validator::BuiltinCall(Expression* call, Declaration* builtin, Expression* 
         a = a->next;
     }
 
-    Type* res = 0;
-    int minArgs = -1, maxArgs = -1;
-    switch( builtin->id ) {
-    case Builtin::ABS:
-    case Builtin::IABS:
-    case Builtin::SIGN:
-    case Builtin::ENTIER:
-        minArgs = maxArgs = 1;
-        res = mdl->getType( builtin->id == Builtin::ABS ? Type::Real : Type::Integer );
-        if( builtin->id == Builtin::ABS && args && args->getType() )
-            res = args->getType();
-        break;
-    case Builtin::SQRT:
-    case Builtin::SIN:
-    case Builtin::COS:
-    case Builtin::ARCTAN:
-    case Builtin::LN:
-    case Builtin::EXP:
-        minArgs = maxArgs = 1;
-        res = mdl->getType(Type::Real);
-        break;
-    case Builtin::LENGTH:
-        minArgs = maxArgs = 1;
-        res = mdl->getType(Type::Integer);
-        break;
-    case Builtin::ININTEGER:
-    case Builtin::INREAL:
-    case Builtin::OUTINTEGER:
-    case Builtin::OUTREAL:
-    case Builtin::OUTSTRING:
-        // the channel is the first actual in the Modified Report, but often left out
-        minArgs = 1;
-        maxArgs = 2;
-        res = mdl->getType(Type::NoType);
-        break;
-    case Builtin::INCHAR:
-    case Builtin::OUTCHAR:
-    case Builtin::INSYMBOL:
-    case Builtin::OUTSYMBOL:
-        minArgs = 2;
-        maxArgs = 3;
-        res = mdl->getType(Type::NoType);
-        break;
-    case Builtin::OUTTERMINATOR:
-        minArgs = 0;
-        maxArgs = 1;
-        res = mdl->getType(Type::NoType);
-        break;
-    case Builtin::STOP:
-        minArgs = maxArgs = 0;
-        res = mdl->getType(Type::NoType);
-        break;
-    case Builtin::FAULT:
-        minArgs = 1;
-        maxArgs = 2;
-        res = mdl->getType(Type::NoType);
-        break;
-    case Builtin::MAXREAL:
-    case Builtin::MINREAL:
-    case Builtin::EPSILON:
-        minArgs = maxArgs = 0;
-        res = mdl->getType(Type::Real);
-        break;
-    case Builtin::MAXINT:
-        minArgs = maxArgs = 0;
-        res = mdl->getType(Type::Integer);
-        break;
-    default:
-        break;
-    }
+    const Builtin::Desc& desc = Builtin::at(builtin->id);
+    const int minArgs = Builtin::minArgs(desc), maxArgs = Builtin::maxArgs(desc);
+    Type* res = mdl->getType( desc.res == 'i' ? Type::Integer :
+                              desc.res == 'f' ? Type::Real : Type::NoType );
+    if( builtin->id == Builtin::ABS && args && args->getType() )
+        res = args->getType(); // abs delivers the type of its actual, iabs and fabs not
 
-    if( checkArity && minArgs >= 0 && ( n < minArgs || n > maxArgs ) )
+    if( checkArity && ( n < minArgs || n > maxArgs ) )
         error(pos, QString("%1 expects %2 actual parameters, got %3").
               arg(builtin->name.constData()).arg(maxArgs).arg(n));
 
+    if( args == 0 && !checkArity ) {
+        // this is only the callee of a call, the actuals are checked with the call
+        if( call )
+            call->setType(res);
+        return;
+    }
+
+    if( desc.special == Builtin::Bound )
+        BoundInquiry(builtin, args, pos);
+
     // the input procedures deliver their result through a name parameter
-    if( ( builtin->id == Builtin::ININTEGER || builtin->id == Builtin::INREAL ||
-          builtin->id == Builtin::INSYMBOL || builtin->id == Builtin::INCHAR ) && args ) {
+    if( desc.special == Builtin::InVar && args && n >= minArgs ) {
         Expression* v = args;
         while( v->next )
             v = v->next; // the last actual is the variable receiving the value
@@ -1170,6 +1110,24 @@ void Validator::BuiltinCall(Expression* call, Declaration* builtin, Expression* 
 
     if( call )
         call->setType(res);
+}
+
+void Validator::BoundInquiry(Declaration* builtin, Expression* args, const RowCol& pos)
+{
+    Declaration* d = args && args->kind == Expression::DeclRef ? args->d : 0;
+    if( d == 0 || d->getType() == 0 || d->getType()->kind != Type::Array ) {
+        error(pos, QString("%1 expects an array as first actual parameter").
+              arg(builtin->name.constData()));
+        return;
+    }
+    Expression* dim = args->next;
+    if( dim == 0 )
+        return; // the dimension defaults to one
+    if( dim->kind != Expression::UnsignedConst )
+        error(dim->pos, "the dimension must be an integer literal");
+    else if( int(dim->u) < 1 ||
+             ( !d->isParam && int(dim->u) > d->getType()->getDims() ) )
+        error(dim->pos, "the dimension is out of range");
 }
 
 Type* Validator::resultType(int op, Type* lhs, Type* rhs, Expression* e)
@@ -1242,7 +1200,7 @@ bool Validator::assigCompat(Type* lhs, Type* rhs, const RowCol& pos)
     return false;
 }
 
-Declaration* Validator::resolve(Atom sym) const
+Declaration* Validator::resolve(Atom sym)
 {
     for( int i = scopeStack.size() - 1; i >= 0; i-- )
     {
@@ -1250,7 +1208,10 @@ Declaration* Validator::resolve(Atom sym) const
         if( d )
             return d;
     }
-    return AstModel::findInScope(mdl->getGlobals(), sym);
+    Declaration* d = AstModel::findInScope(mdl->getGlobals(), sym);
+    if( d )
+        return d;
+    return mdl->findBuiltinFamily(sym); // e.g. outreal_16_11
 }
 
 Declaration* Validator::findLabel(Declaration* scope, Atom sym, bool transparentOnly)

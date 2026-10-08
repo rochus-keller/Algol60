@@ -86,12 +86,13 @@ namespace Alg
         void FormalCallsError();
         static Declaration* uniqueProc(const DeclList& candidates);
 
+        void BoundInquiry(Declaration* builtin, Expression* args, const RowCol& pos);
         void BuiltinCall(Expression* call, Declaration* builtin, Expression* args,
                          const RowCol& pos, bool checkArity = true);
         Type* resultType(int op, Type* lhs, Type* rhs, Expression* e);
         bool assigCompat(Type* lhs, Type* rhs, const RowCol& pos);
 
-        Declaration* resolve(Atom sym) const;
+        Declaration* resolve(Atom sym);
         Declaration* resolveLabel(Atom sym) const;
         static Declaration* findLabel(Declaration* scope, Atom sym, bool transparentOnly);
         Declaration* curProc() const;
@@ -106,6 +107,7 @@ namespace Alg
         QString sourcePath;
         QList<Declaration*> scopeStack; // Program, Procedure and Block scopes
         QList<Declaration*> procStack; // Program and Procedure scopes only
+        bool inCallee; // this is the callee of a call with actuals
         QSet<Declaration*> visited;
         QHash<Declaration*,DeclList> procActuals; // formal procedure -> the actuals passed to it
         struct FormalCall {

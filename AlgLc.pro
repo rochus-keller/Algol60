@@ -31,6 +31,7 @@ SOURCES += AlgLc.cpp \
     AlgAirGen.cpp
 
 include( Algol.pri )
+include( AIR.pri )
 
 CONFIG(debug, debug|release) {
         DEFINES += _DEBUG
@@ -42,5 +43,5 @@ HEADERS += \
     AlgAirGen.h
 
 
-include(AIR.pri)
+
 

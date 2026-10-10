@@ -19,7 +19,6 @@
 
 #include <Algol60/AirValidator.h>
 using namespace Air;
-using Alg::RowCol;
 
 static bool usesDeclOperand(quint8 op)
 {

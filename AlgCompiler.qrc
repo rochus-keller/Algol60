@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/runtime">
+        <file>AirRt.lua</file>
+        <file>Algol60Rt.lua</file>
+    </qresource>
+</RCC>

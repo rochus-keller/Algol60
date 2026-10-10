@@ -24,6 +24,7 @@
 #include <QFileInfo>
 #include <QTextStream>
 #include <QtDebug>
+#include <Algol60/AlgVersion.h>
 #include <Algol60/AlgLexer.h>
 #include <Algol60/AlgParser2.h>
 #include <Algol60/AlgAst.h>
@@ -162,6 +163,30 @@ static bool frontend(const Options& o, const QString& source, Air::AstModel& air
     return true;
 }
 
+static void preload(Lua::Engine2& lua, const QByteArray& name, const QString& dir)
+{
+    // the runtime module of the directory takes precedence over the built-in one
+    QByteArray code;
+    const QString path = QDir(dir).absoluteFilePath(QString::fromUtf8(name) + ".lua");
+    if( !dir.isEmpty() && QFile::exists(path) )
+    {
+        QFile f(path);
+        f.open(QIODevice::ReadOnly);
+        code = f.readAll();
+    }else
+    {
+        QFile f(QString(":/runtime/%1.lua").arg(name.constData()));
+        if( !f.open(QIODevice::ReadOnly) )
+        {
+            qCritical() << "cannot find the runtime module" << name;
+            return;
+        }
+        code = f.readAll();
+    }
+    if( !lua.addPreloadLib(code, name) )
+        qCritical() << "error loading" << name << lua.getLastError().constData();
+}
+
 static bool run(const Options& o, const QByteArray& code, const QString& source,
                 const QStringList& path)
 {
@@ -176,6 +201,7 @@ static bool run(const Options& o, const QByteArray& code, const QString& source,
     lua.addLibrary(Lua::Engine2::DBG); // the runtime uses debug.getinfo for fault tracebacks
     lua.setPrintToStdout(true);
 
+#if 0
     QByteArray prelude = "package.path = '";
     foreach( const QString& p, path )
         prelude += QDir(p).absolutePath().toUtf8() + "/?.lua;";
@@ -185,6 +211,11 @@ static bool run(const Options& o, const QByteArray& code, const QString& source,
         qCritical() << "cannot set the module search path:" << lua.getLastError();
         return false;
     }
+#else
+    preload(lua, "AirRt", o.runtimeDir);
+    preload(lua, "Algol60Rt", o.runtimeDir);
+#endif
+
 
     if( !lua.executeCmd(code, source.toUtf8()) )
     {
@@ -198,7 +229,7 @@ int main(int argc, char *argv[])
 {
     QCoreApplication a(argc, argv);
     a.setApplicationName("algc");
-    a.setApplicationVersion("2026-10-08");
+    a.setApplicationVersion(ALG_VERSION);
 
     QTextStream out(stdout);
 

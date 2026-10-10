@@ -1,5 +1,5 @@
-#ifndef ALGROWCOL_H
-#define ALGROWCOL_H
+#ifndef AIRROWCOL_H
+#define AIRROWCOL_H
 
 /*
 * Copyright 2023 Rochus Keller <mailto:me@rochus-keller.ch>
@@ -25,7 +25,7 @@
 
 // adopted from ActiveOberon project
 
-namespace Alg
+namespace Air
 {
     struct RowCol
     {
@@ -64,4 +64,4 @@ namespace Alg
     };
 }
 
-#endif // ALGROWCOL_H
+#endif // AIRROWCOL_H

@@ -25,9 +25,9 @@ using namespace Air;
 
 static const char* s_transfer = "Transfer";
 
-static inline Alg::RowCol air(const Alg::RowCol& r)
+static inline RowCol air(const RowCol& r)
 {
-    return Alg::RowCol(r.d_row, r.d_col);
+    return RowCol(r.d_row, r.d_col);
 }
 
 static bool isNameScalar(Declaration* d)
@@ -101,7 +101,7 @@ bool AirGen::generate(Declaration* module, AbstractRenderer* out)
         prog = prog->next;
     if( prog == 0 )
     {
-        error(Alg::RowCol(), "no program in this module");
+        error(RowCol(), "no program in this module");
         return false;
     }
 
@@ -375,7 +375,7 @@ Quali AirGen::typeRef(Type* t, Declaration* d)
 
 void AirGen::auxTypes()
 {
-    const Alg::RowCol pos = air(module->pos);
+    const RowCol pos = air(module->pos);
     e->addType("chars", pos, false, q("char"), EmiTypes::Array);
     e->addType("str", pos, false, q("chars"), EmiTypes::Pointer);
     e->addType("xfer", pos, false, rt(s_transfer), EmiTypes::Pointer);
@@ -455,7 +455,7 @@ void AirGen::procTypes()
         Frame* f = frames[i];
         if( !procType.contains(f->decl) )
             continue;
-        const Alg::RowCol pos = air(f->decl->pos);
+        const RowCol pos = air(f->decl->pos);
         e->beginType(procType.value(f->decl), pos, false, EmiTypes::BoundProcType);
         const DeclList params = Validator::params(f->decl);
         for( int k = 0; k < params.size(); k++ ) {
@@ -479,7 +479,7 @@ void AirGen::frameTypes()
     for( int i = 0; i < frames.size(); i++ )
     {
         Frame* f = frames[i];
-        const Alg::RowCol pos = air(f->decl->pos);
+        const RowCol pos = air(f->decl->pos);
         e->beginType(f->rec, pos, false, EmiTypes::Record);
         if( f->outer )
             e->addField("$up", pos, q(f->outer->ref), false);
@@ -521,7 +521,7 @@ void AirGen::emitProc(Frame* f)
 
     Declaration* proc = f->decl;
     const bool func = isFunc(proc);
-    const Alg::RowCol pos = air(proc->pos);
+    const RowCol pos = air(proc->pos);
 
     if( f->dispatch )
         emitBody(f); // the statements run in a separate procedure called protected
@@ -677,7 +677,7 @@ void AirGen::emitProc(Frame* f)
 
 void AirGen::emitBody(Frame* f)
 {
-    const Alg::RowCol pos = air(f->decl->pos);
+    const RowCol pos = air(f->decl->pos);
     e->beginProc(f->proc + "$body", pos, false);
     e->addArgument(q(f->ref), "$fr");
     e->addArgument(q("int32"), "$entry");
@@ -823,7 +823,7 @@ void AirGen::emitThunks(Frame* f)
     for( int i = 0; i < thunks.size(); i++ )
     {
         const Thunk& t = thunks[i];
-        const Alg::RowCol pos = air(t.actual->pos);
+        const RowCol pos = air(t.actual->pos);
 
         e->beginProc(t.getter, pos, false, ProcData::Normal, f->rec);
         e->addArgument(q(f->ref), "$this");
@@ -865,7 +865,7 @@ void AirGen::emitSwitches(Frame* f)
         Declaration* sw = i.key();
         if( Validator::declProc(sw) != f->decl )
             continue;
-        const Alg::RowCol pos = air(sw->pos);
+        const RowCol pos = air(sw->pos);
         e->beginProc(i.value(), pos, false, ProcData::Normal, f->rec);
         e->addArgument(q(f->ref), "$this");
         e->addArgument(q("int32"), "$idx");
@@ -904,7 +904,7 @@ void AirGen::framePtr(Frame* target)
         f = f->outer;
     }
     if( f == 0 )
-        error(Alg::RowCol(), "cannot reach the frame of an enclosing activation");
+        error(RowCol(), "cannot reach the frame of an enclosing activation");
 }
 
 AirGen::Frame* AirGen::frameOfDecl(Declaration* d) const
@@ -1675,12 +1675,8 @@ void AirGen::declRef(Expression* ex)
         }
         break;
     case Declaration::Procedure:
-        if( d == curFrame->decl ) {
-            // the identifier of the enclosing function designates its result
-            framePtr(curFrame);
-            e->ldfld_(Trident(q(curFrame->rec), "$res"));
-        }else
-            call(ex, d, 0, 0);
+        // a recursive activation if not the left part of an assignment
+        call(ex, d, 0, 0);
         break;
     case Declaration::Builtin:
         builtin(ex, d, 0);
@@ -1850,7 +1846,7 @@ void AirGen::call(Expression* ex, Declaration* proc, Expression* actuals, Type* 
 {
     if( proc->kind == Declaration::Parameter )
     {
-        const Alg::RowCol pos = ex ? air(ex->pos) : air(proc->pos);
+        const RowCol pos = ex ? air(ex->pos) : air(proc->pos);
         int argc = 0;
         Declaration* callee = calleeOf(proc);
         if( actuals ) {
@@ -1868,7 +1864,7 @@ void AirGen::call(Expression* ex, Declaration* proc, Expression* actuals, Type* 
     Frame* callee = frameOfProc.value(proc);
     if( callee == 0 )
     {
-        error(ex ? air(ex->pos) : Alg::RowCol(), "unknown procedure");
+        error(ex ? air(ex->pos) : RowCol(), "unknown procedure");
         return;
     }
 
@@ -1877,7 +1873,7 @@ void AirGen::call(Expression* ex, Declaration* proc, Expression* actuals, Type* 
     e->callinst_(Trident(q(callee->outer->rec), callee->proc), argc, isFunc(proc));
 }
 
-int AirGen::args(Declaration* proc, Expression* actuals, const Alg::RowCol& pos)
+int AirGen::args(Declaration* proc, Expression* actuals, const RowCol& pos)
 {
     const DeclList formals = Validator::params(proc);
     int argc = 0, i = 0;
@@ -1980,7 +1976,7 @@ void AirGen::builtin(Expression* ex, Declaration* b, Expression* actuals)
 {
     Type* real = mdl->getType(Type::Real);
     Type* integer = mdl->getType(Type::Integer);
-    const Alg::RowCol pos = ex ? ex->pos : ( actuals ? actuals->pos : Alg::RowCol() );
+    const RowCol pos = ex ? ex->pos : ( actuals ? actuals->pos : RowCol() );
     const Builtin::Desc& d = Builtin::at(b->id);
 
     if( d.special == Builtin::Abs )
@@ -2093,7 +2089,7 @@ void AirGen::builtin(Expression* ex, Declaration* b, Expression* actuals)
 
 void AirGen::bound(Expression* ex, Declaration* b, Expression* actuals)
 {
-    const Alg::RowCol pos = ex ? ex->pos : ( actuals ? actuals->pos : Alg::RowCol() );
+    const RowCol pos = ex ? ex->pos : ( actuals ? actuals->pos : RowCol() );
     Declaration* d = actuals && actuals->kind == Expression::DeclRef ? actuals->d : 0;
     if( d == 0 || !isArray(d) )
     {
@@ -2233,7 +2229,7 @@ QByteArray AirGen::tmpName()
     return "$t" + QByteArray::number(++tmpCount);
 }
 
-void AirGen::error(const Alg::RowCol& pos, const QString& msg)
+void AirGen::error(const RowCol& pos, const QString& msg)
 {
     errors << Error(msg, pos, sourcePath);
 }
@@ -2270,7 +2266,7 @@ void AirGen::generateRuntime(AbstractRenderer* out)
 {
     // the interface of the Algol 60 runtime; the implementation is provided by the backend
     Emitter e(out, Emitter::None);
-    const Alg::RowCol pos(1,1);
+    const RowCol pos(1,1);
     e.beginModule("Algol60Rt", "Algol60Rt.air", pos);
 
     e.beginType(s_transfer, pos, true, EmiTypes::Record);

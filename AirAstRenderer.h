@@ -44,7 +44,7 @@ namespace Air
         void addType( const QByteArray& name, bool isPublic, const Quali& baseType,
                       quint8 typeKind, quint32 len = 0 );
         void addField( const QByteArray& fieldName, const Quali& typeRef, bool isPublic = true );
-        void line( const Alg::RowCol& );
+        void line( const RowCol& );
 
         Declaration* getModule() const { return done; }
 
@@ -63,7 +63,7 @@ namespace Air
         Expression* translateExpr( const QList<ProcData::Op>&, int& pc );
         bool expect( const QList<ProcData::Op>&, int pc, quint8 op );
         void error( const QString&, int pc = -1 );
-        Alg::RowCol setLine( quint32 packed );
+        RowCol setLine( quint32 packed );
 
     private:
         AstModel* mdl;
@@ -71,7 +71,7 @@ namespace Air
         Declaration* done;
         Declaration* curProc;
         Type* curType;
-        Alg::RowCol curPos;
+        RowCol curPos;
         QList<Type*> unresolved;
         struct Pending // an instruction operand can refer to a declaration not yet seen
         {

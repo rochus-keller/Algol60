@@ -22,7 +22,6 @@
 #include <QIODevice>
 #include <QtDebug>
 using namespace Air;
-using Alg::RowCol;
 
 /*
     The generated module chunk uses the following slots:

@@ -21,7 +21,6 @@
 #include <Algol60/AirRenderer.h>
 #include <QtDebug>
 using namespace Air;
-using Alg::RowCol;
 
 static void renderProc( const Declaration* p, AbstractRenderer* r, AstSerializer::DbgInfo );
 

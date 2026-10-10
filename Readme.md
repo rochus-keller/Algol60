@@ -10,7 +10,8 @@ I also implemented a syntax highlighter and a little Algol60 editor based on Qt 
 
 ![Overview](http://software.rochus-keller.ch/AlgLjEditor_screenshot_1.png)
 
-There is now also a hand-crafted parser which generates an AST, and a validator which evaluates the semantics and resolves symbols, as in the Simula and ActiveOberon projects.
+There is now also a hand-crafted parser which generates an AST, and a validator which evaluates the semantics and resolves symbols, as in the Simula and ActiveOberon projects,
+and in addition a LuaJIT bytecode generator and integrated VM, so algc can not only compile, but also directly run Algol programs.
 
 ### Status on Sept. 16, 2026
 
@@ -48,18 +49,29 @@ marst, swornimgrg-algol60) 164 run; the ones that don't work are from racket-alg
 
 ### Binary versions
 
-Not yet available.
+The following precompiled versions are available at this time:
+
+- [Linux x64](https://software.rochus-keller.ch/algc_linux_x64.tar.gz)
+- [Windows x86](https://software.rochus-keller.ch/algc_windows_x86.zip)
 
 ### Build Steps
 
-Follow these steps if you want to build the application yourself:
+Follow these steps if you want to build algc yourself. The build is using LeanQt and the BUSY build system. Note that compiling on 
+Linux requires the build essentials. On Mac and Windows there are no additional requirements than a toolchain.
 
-1. Make sure a Qt 5.x (libraries and headers) version compatible with your C++ compiler is installed on your system.
-1. Download the source code from https://github.com/rochus-keller/Algol60/archive/master.zip and unpack it.
-1. Goto the unpacked directory and execute `QTDIR/bin/qmake AlgLjEditor.pro` (see the Qt documentation concerning QTDIR).
-1. Run make; after a couple of seconds you will find the executable in the build directory.
+1. Create a new directory; we call it the root directory here
+1. Download https://github.com/rochus-keller/Algol60/archive/refs/heads/master.zip and unpack it to the root directory; rename the resulting directory to "Algol60".
+1. Download https://software.rochus-keller.ch/LuaJIT-2.1-patched.zip and unpack it to the root directory; rename the resulting directory to "LuaJIT-2.1" if necessary.
+1. Download https://github.com/rochus-keller/LjTools/archive/refs/heads/master.zip and unpack it to the root directory; rename the resulting directory to "LjTools".
+1. Download https://github.com/rochus-keller/LeanQt/archive/refs/heads/master.zip and unpack it to the root directory; rename the resulting directory to "LeanQt".
+1. Download https://github.com/rochus-keller/BUSY/archive/refs/heads/master.zip and unpack it to the root directory; rename the resulting directory to "build".
+1. Open a command line in the "LuaJIT-2.1" directory and follow the instructions there to build LuaJIT for your platform. 
+1. Open a command line in the "build" directory and type `cc *.c -O2 -lm -o lua` or `cl /O2 /MD /Fe:lua.exe *.c` depending on whether you are on a Unix or Windows machine; wait a few seconds until the Lua executable is built.
+1. Now type `./lua build.lua ../Luon` (or `lua build.lua ../Algol60` on Windows); wait until the algc executable is built; you find it in the output subdirectory.
 
-Alternatively you can open AlgLjEditor.pro using QtCreator and build it there.
+Instead of the command line you can run the build using [LeanCreator](https://github.com/rochus-keller/LeanCreator) which uses multiple cores and thus builds faster.
+
+Alternatively you can build AlgCompiler.pro using Qt5 and qmake or QtCreator. You still need to build LuaJIT as indicated above.
 
 ## Support
 If you need support or would like to post issues or feature requests please use the Github issue list at https://github.com/rochus-keller/Algol60/issues or send an email to the author.

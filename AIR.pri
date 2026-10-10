@@ -7,6 +7,7 @@ HEADERS += \
     $$PWD/AirEmitter.h \
     $$PWD/AirOps.h \
     $$PWD/AirRenderer.h \
+    $$PWD/AirRowCol.h \
     $$PWD/AirValidator.h \
 
 SOURCES += \
@@ -16,4 +17,5 @@ SOURCES += \
     $$PWD/AirEmitter.cpp \
     $$PWD/AirOps.cpp \
     $$PWD/AirRenderer.cpp \
+    $$PWD/AirRowCol.cpp \
     $$PWD/AirValidator.cpp \

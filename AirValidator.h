@@ -71,7 +71,7 @@ namespace Air
         Type* typeOf(Declaration*) const;
         Val valOf(Type*) const;
         void error(const QString&);
-        void error(const QString&, const Alg::RowCol&);
+        void error(const QString&, const RowCol&);
 
     private:
         AstModel* mdl;
@@ -81,7 +81,7 @@ namespace Air
         QSet<QByteArray> labels, gotos;
         bool suppress; // the current instruction refers to a declaration of a stub module
         bool unknownStack; // a call of unknown arity was seen, stack checks are off
-        Alg::RowCol curPos;
+        RowCol curPos;
     };
 }
 

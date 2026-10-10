@@ -27,7 +27,7 @@
 #include <QPair>
 #include <QString>
 #include <QVariant>
-#include <Algol60/AlgRowCol.h>
+#include <Algol60/AirRowCol.h>
 #include <Algol60/AirOps.h>
 
 namespace Air
@@ -83,7 +83,7 @@ namespace Air
 
         uint typebound : 1; // Type: bound procedure type; Declaration: bound procedure, receiver param
 
-        Alg::RowCol pos;
+        RowCol pos;
 
         void setType(Type*);
         Type* getType() const { return type; }
@@ -149,12 +149,12 @@ namespace Air
     struct ModuleData
     {
         QString source;
-        Alg::RowCol end;
+        RowCol end;
     };
 
     struct ProcedureData
     {
-        Alg::RowCol end;
+        RowCol end;
         QByteArray externalName; // EXTERN and FOREIGN: the name in the target, if given
     };
 

@@ -20,7 +20,6 @@
 #include <Algol60/AirAstRenderer.h>
 #include <Algol60/AirValidator.h>
 using namespace Air;
-using Alg::RowCol;
 
 static QByteArray format(const Quali& q)
 {

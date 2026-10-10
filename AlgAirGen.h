@@ -41,9 +41,9 @@ namespace Alg
 
         struct Error {
             QString msg;
-            Alg::RowCol pos;
+            RowCol pos;
             QString path;
-            Error(const QString& m, const Alg::RowCol& rc, const QString& p)
+            Error(const QString& m, const RowCol& rc, const QString& p)
                 : msg(m), pos(rc), path(p) {}
         };
         QList<Error> errors;
@@ -125,7 +125,7 @@ namespace Alg
         static QByteArray rtArgs(const Builtin::Desc&);
         void store(Expression* lhs, Expression* rhs, int tmp = -1, Type* tmpType = 0, bool tmpIsArg = false);
         void loadTmp(int tmp, bool isArg);
-        int args(Declaration* proc, Expression* args, const Alg::RowCol&);
+        int args(Declaration* proc, Expression* args, const RowCol&);
         void conv(Type* from, Type* to);
         void arrayRef(Expression* subscript);
         void descriptor(Declaration* array);
@@ -155,7 +155,7 @@ namespace Alg
         static QByteArray stringValue(const QByteArray& literal);
         int localOf(Type*);
         QByteArray tmpName();
-        void error(const Alg::RowCol& pos, const QString& msg);
+        void error(const RowCol& pos, const QString& msg);
         static Air::Quali q(const QByteArray& name);
         static Air::Quali rt(const QByteArray& name);
 

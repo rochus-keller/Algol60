@@ -23,7 +23,7 @@
 #include <QByteArray>
 #include <QList>
 #include <QHash>
-#include <Algol60/AlgRowCol.h>
+#include <Algol60/AirRowCol.h>
 
 class QTextStream;
 
@@ -35,6 +35,7 @@ namespace Alg
     class Type;
     class Statement;
     class Expression;
+    using Air::RowCol;
 
     typedef const char* Atom;
     typedef QList<Declaration*> DeclList;

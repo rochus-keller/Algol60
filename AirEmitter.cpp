@@ -21,7 +21,6 @@
 #include <Algol60/AirOps.h>
 #include <QtDebug>
 using namespace Air;
-using Alg::RowCol;
 
 Emitter::Emitter(AbstractRenderer* r, DbgInfo di):
     d_typeKind(0),d_stackDepth(0),d_maxStackDepth(0),ops(0),d_out(r),

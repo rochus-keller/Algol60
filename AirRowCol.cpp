@@ -16,9 +16,9 @@
 * http://www.fsf.org/licensing/licenses/info/GPLv2.html and
 * http://www.gnu.org/copyleft/gpl.html.
 */
-#include <Algol60/AlgRowCol.h>
+#include "AirRowCol.h"
 #include <QtDebug>
-using namespace Alg;
+using namespace Air;
 
 RowCol::RowCol(quint32 row, quint32 col)
 {

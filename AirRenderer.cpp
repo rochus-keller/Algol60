@@ -23,7 +23,6 @@
 #include <QDateTime>
 #include <QtDebug>
 using namespace Air;
-using Alg::RowCol;
 
 enum { MaxLineLen = 72 };
 

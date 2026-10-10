@@ -35,34 +35,34 @@ namespace Air
         enum DbgInfo { None, RowsOnly, RowsAndCols };
         Emitter(AbstractRenderer*, DbgInfo = RowsOnly);
 
-        void beginModule( const QByteArray& moduleName, const QString& sourceFile, const Alg::RowCol& );
-        void endModule( const Alg::RowCol& );
+        void beginModule( const QByteArray& moduleName, const QString& sourceFile, const RowCol& );
+        void endModule( const RowCol& );
 
-        void addImport( const QByteArray& moduleName, const Alg::RowCol& );
+        void addImport( const QByteArray& moduleName, const RowCol& );
 
-        void addVariable( const Quali& typeRef, const QByteArray& name, const Alg::RowCol&, bool isPublic = true );
-        void addConst( const Quali& typeRef, const QByteArray& name, const Alg::RowCol&, const QVariant& val );
+        void addVariable( const Quali& typeRef, const QByteArray& name, const RowCol&, bool isPublic = true );
+        void addConst( const Quali& typeRef, const QByteArray& name, const RowCol&, const QVariant& val );
 
-        void beginType( const QByteArray& name, const Alg::RowCol&, bool isPublic = true,
+        void beginType( const QByteArray& name, const RowCol&, bool isPublic = true,
                         quint8 typeKind = EmiTypes::Struct, const Quali& base = Quali() );
             // use for Struct, Record, ProcType, BoundProcType, CStruct, CUnion
             // supports addField, addArgument, setReturnType
         void endType();
 
-        void addType( const QByteArray& name, const Alg::RowCol&, bool isPublic, const Quali& baseType,
+        void addType( const QByteArray& name, const RowCol&, bool isPublic, const Quali& baseType,
                       quint8 typeKind = EmiTypes::Alias, quint32 len = 0 );
             // use for Alias, Pointer, Array, CArray, CPointer
 
-        void beginProc( const QByteArray& procName, const Alg::RowCol&, bool isPublic = true,
+        void beginProc( const QByteArray& procName, const RowCol&, bool isPublic = true,
                         quint8 kind = ProcData::Normal, const QByteArray& binding = QByteArray() );
             // binding is the record type for bound procedures, the external name for Extern and Foreign
-        void endProc( const Alg::RowCol& );
+        void endProc( const RowCol& );
         void discardProc();
 
-        void addField( const QByteArray& fieldName, const Alg::RowCol&, const Quali& typeRef, bool isPublic = true );
-        quint32 addLocal( const Quali& typeRef, const QByteArray& name, const Alg::RowCol& = Alg::RowCol() );
+        void addField( const QByteArray& fieldName, const RowCol&, const Quali& typeRef, bool isPublic = true );
+        quint32 addLocal( const Quali& typeRef, const QByteArray& name, const RowCol& = RowCol() );
         quint32 addArgument( const Quali& typeRef, const QByteArray& name,
-                             bool isVarParam = false, const Alg::RowCol& = Alg::RowCol() ); // the receiver is explicit
+                             bool isVarParam = false, const RowCol& = RowCol() ); // the receiver is explicit
         void setReturnType( const Quali& typeRef );
 
         quint16 maxStackDepth() const { return d_maxStackDepth; }
@@ -117,7 +117,7 @@ namespace Air
         void ldvar_( const Quali& varRef );
         void ldvirt_( const Trident& procRef );
         void len_();
-        void line_( const Alg::RowCol& );
+        void line_( const RowCol& );
         void loop_();
         void mul_();
         void neg_();
@@ -159,8 +159,8 @@ namespace Air
     protected:
         void delta(int d);
         void add(quint8 op, const QVariant& arg = QVariant());
-        void lineout(const Alg::RowCol&);
-        quint32 lineset(const Alg::RowCol&);
+        void lineout(const RowCol&);
+        quint32 lineset(const RowCol&);
 
     private:
         quint8 d_typeKind;

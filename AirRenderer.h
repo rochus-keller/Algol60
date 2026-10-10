@@ -26,7 +26,7 @@
 #include <QVariant>
 #include <QIODevice>
 #include <QTextStream>
-#include <Algol60/AlgRowCol.h>
+#include <Algol60/AirRowCol.h>
 
 // adopted from MilRenderer
 
@@ -115,7 +115,7 @@ namespace Air
 
         virtual void addField( const QByteArray& fieldName, const Quali& typeRef, bool isPublic = true ) {}
 
-        virtual void line( const Alg::RowCol& ) {}
+        virtual void line( const RowCol& ) {}
     };
 
     class AsmRenderer : public AbstractRenderer
@@ -134,7 +134,7 @@ namespace Air
         void addType( const QByteArray& name, bool isPublic, const Quali& baseType,
                       quint8 typeKind, quint32 len = 0 );
         void addField( const QByteArray& fieldName, const Quali& typeRef, bool isPublic = true );
-        void line( const Alg::RowCol& );
+        void line( const RowCol& );
 
         static QByteArray formatNumber( const QVariant& );
         static QByteArray formatString( const QByteArray& );
@@ -169,7 +169,7 @@ namespace Air
         quint8 curSection;
         quint8 typeKind;
         int level;
-        Alg::RowCol curPos, lastPos;
+        RowCol curPos, lastPos;
         bool typeIsPublic;
         bool renderLineInfo, renderColumns;
     };
@@ -190,7 +190,7 @@ namespace Air
         void addType( const QByteArray& name, bool isPublic, const Quali& baseType,
                       quint8 typeKind, quint32 len = 0 );
         void addField( const QByteArray& fieldName, const Quali& typeRef, bool isPublic = true );
-        void line( const Alg::RowCol& );
+        void line( const RowCol& );
     private:
         QList<AbstractRenderer*> renderer;
     };

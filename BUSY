@@ -1,0 +1,96 @@
+# author: Rochus Keller (me@rochus-keller.ch)
+# License: GPL
+# https://github.com/rochus-keller/BUSY/blob/main/README.md on how to use this file
+
+if busy_version < "2023-01-15" {
+    error("this version of BUSY is not compatible with this build")
+}
+
+let mtconf : Config {
+    .cflags = [ "/O2", "/MT" ]
+}
+
+if (build_mode == `optimized) && (target_toolchain == `msvc) {
+    set_defaults(target_toolchain,mtconf)
+}
+
+submod qtmini = ../LeanQt (HAVE_FILEIO, HAVE_COREAPP, HAVE_OBJECT)
+
+let config : Config {
+    .configs += [ qtmini.core_client_config ]
+    .include_dirs += ..
+    if build_mode == `debug {
+        .defines += "_DEBUG"
+    }
+}
+
+let alg : SourceSet {
+    .configs += config;
+    .sources += [
+        ./AlgAst.cpp
+        ./AlgErrors.cpp
+        ./AlgFileCache.cpp
+        ./AlgLexer.cpp
+        ./AlgParser.cpp
+        ./AlgParser2.cpp
+        ./AlgSynTree.cpp
+        ./AlgToken.cpp
+        ./AlgTokenType.cpp
+        ./AlgValidator.cpp
+    ]
+}
+
+let air : SourceSet {
+    .configs += config;
+    .sources += [
+        ./AirAst.cpp 
+        ./AirAstRenderer.cpp 
+        ./AirAstSerializer.cpp 
+        ./AirEmitter.cpp 
+        ./AirOps.cpp 
+        ./AirRenderer.cpp 
+        ./AirRowCol.cpp 
+        ./AirValidator.cpp 
+    ]
+}
+
+let luajit : SourceSet {
+    .configs += config;
+    .include_dirs += [ ../LuaJIT-2.1/src .. ]
+    .sources += [
+        ../LjTools/LuaJitBytecode2.cpp 
+        ../LjTools/Engine2.cpp 
+        ../LjTools/LuaJitComposer2.cpp 
+        ../LjTools/LuaJitHelper.cpp 
+        ./AirLjGen.cpp
+    ]
+}
+
+let rcc : Rcc {
+    .sources += [ ./AlgCompiler.qrc ]
+    .deps += qtmini.copy_rcc
+}
+
+let moc : Moc {
+    .sources += [
+        ../LjTools/Engine2.h
+    ]
+    .deps += qtmini.copy_moc
+}
+
+let algc ! : Executable {
+    .sources += [
+        ./AlgCompiler.cpp
+        ./AlgAirGen.cpp
+    ]
+    .deps += [ qtmini.core_sources moc rcc luajit alg air ]
+    .configs += config
+    if target_os == `win32 {
+        .lib_files +=  [ ../LuaJIT-2.1/src/lua51.lib ]
+        .deps += qtmini.libqtwinmain
+    } else {
+        #.lib_names += [ "dl" ]
+        #.ldflags += [ "-rdynamic" ]
+       .lib_files += [ ../LuaJIT-2.1/src/libluajit.a ]
+    }
+}
